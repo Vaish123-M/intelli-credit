@@ -65,13 +65,14 @@ export async function runResearch({ companyName, promoterName }) {
   })
 }
 
-export async function runRiskScore({ financialAnalysis, externalIntelligence }) {
+export async function runRiskScore({ companyName, financialAnalysis, externalIntelligence }) {
   return requestJson('/risk-score', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
+      company_name: companyName || 'Unknown Company',
       financial_analysis: financialAnalysis || {},
       external_intelligence: externalIntelligence || {},
     }),
@@ -91,4 +92,12 @@ export async function generateCamReport({ companyName, financialAnalysis, extern
       risk_decision: riskDecision || {},
     }),
   })
+}
+
+export async function getDashboardSummary() {
+  return requestJson('/dashboard/summary')
+}
+
+export async function getDashboardDeals() {
+  return requestJson('/dashboard/deals')
 }

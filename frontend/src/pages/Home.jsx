@@ -71,7 +71,11 @@ export default function Home() {
 
     setIsScoring(true)
     try {
-      const payload = await runRiskScore({ financialAnalysis, externalIntelligence })
+      const payload = await runRiskScore({
+        companyName: companyName.trim() || 'Unknown Company',
+        financialAnalysis,
+        externalIntelligence,
+      })
       setDecision(payload || null)
       if (!silent) {
         setSuccess('AI credit decision generated successfully.')
