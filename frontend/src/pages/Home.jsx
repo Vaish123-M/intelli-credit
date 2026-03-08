@@ -4,7 +4,7 @@ import AICreditDecision from '../components/AICreditDecision'
 import Dashboard from '../components/Dashboard'
 import FileUpload from '../components/FileUpload'
 import ResearchDashboard from '../components/ResearchDashboard'
-import { getResults, runAnalysis, runResearch, runRiskScore, uploadFiles } from '../services/api'
+import { generateCamReport, getApiBaseUrl, getResults, runAnalysis, runResearch, runRiskScore, uploadFiles } from '../services/api'
 
 export default function Home() {
   const [selectedFiles, setSelectedFiles] = useState([])
@@ -19,6 +19,7 @@ export default function Home() {
   const [isProcessing, setIsProcessing] = useState(false)
   const [isResearching, setIsResearching] = useState(false)
   const [isScoring, setIsScoring] = useState(false)
+  const [isGeneratingCam, setIsGeneratingCam] = useState(false)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
 
@@ -27,8 +28,41 @@ export default function Home() {
     if (isProcessing) return 'Running extraction and financial analysis...'
     if (isResearching) return 'Running external research agent...'
     if (isScoring) return 'Running AI credit risk model...'
+    if (isGeneratingCam) return 'Generating credit approval memo report...'
     return ''
-  }, [isUploading, isProcessing, isResearching, isScoring])
+  }, [isUploading, isProcessing, isResearching, isScoring, isGeneratingCam])
+
+  const handleGenerateCam = async () => {
+    const finalCompanyName = companyName.trim() || 'Intelli Credit Applicant'
+    if (!analysis || !research || !decision) {
+      setError('Run financial analysis, research, and AI scoring before generating CAM report.')
+      return
+    }
+
+    setError('')
+    setIsGeneratingCam(true)
+    try {
+      const payload = await generateCamReport({
+        companyName: finalCompanyName,
+        financialAnalysis: analysis,
+        externalIntelligence: research,
+        riskDecision: decision,
+      })
+
+      const camPath = payload.cam_report_url
+      if (!camPath) {
+        throw new Error('CAM report URL not returned by server.')
+      }
+
+      const downloadUrl = camPath.startsWith('http') ? camPath : `${getApiBaseUrl()}${camPath}`
+      window.open(downloadUrl, '_blank', 'noopener,noreferrer')
+      setSuccess('CAM report generated successfully. Download started.')
+    } catch (camError) {
+      setError(camError.message || 'CAM report generation failed')
+    } finally {
+      setIsGeneratingCam(false)
+    }
+  }
 
   const runScoring = async (financialAnalysis, externalIntelligence, { silent = false } = {}) => {
     if (!financialAnalysis || !externalIntelligence) {
@@ -195,7 +229,7 @@ export default function Home() {
               onFilesSelected={setSelectedFiles}
               onUpload={handleUpload}
               isUploading={isUploading}
-              isProcessing={isProcessing || isResearching || isScoring}
+              isProcessing={isProcessing || isResearching || isScoring || isGeneratingCam}
             />
           </div>
 
@@ -217,7 +251,7 @@ export default function Home() {
             <button
               type="button"
               onClick={() => handleResearch()}
-              disabled={isUploading || isProcessing || isResearching || isScoring}
+              disabled={isUploading || isProcessing || isResearching || isScoring || isGeneratingCam}
               className="rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-indigo-500 disabled:cursor-not-allowed disabled:bg-indigo-300"
             >
               {isResearching ? 'Researching...' : 'Run Research Agent'}
@@ -225,10 +259,12 @@ export default function Home() {
           </div>
 
           {statusLabel && <p className="mt-4 text-sm font-medium text-emerald-700">{statusLabel}</p>}
-          {(isProcessing || isResearching || isScoring) && (
+          {(isProcessing || isResearching || isScoring || isGeneratingCam) && (
             <div className="mt-3 flex items-center gap-2 text-sm text-slate-700">
               <span className="inline-block h-3 w-3 animate-pulse rounded-full bg-emerald-500" />
-              {isScoring
+              {isGeneratingCam
+                ? 'Formatting 5C report and rendering CAM PDF...'
+                : isScoring
                 ? 'Scoring AI credit risk and generating decision recommendations...'
                 : isResearching
                 ? 'Gathering external intelligence, litigation, sector risk, and sentiment...'
@@ -240,7 +276,12 @@ export default function Home() {
 
           <Dashboard analysis={analysis} />
           <ResearchDashboard intelligence={research} />
-          <AICreditDecision decision={decision} />
+          <AICreditDecision
+            decision={decision}
+            onGenerateCam={handleGenerateCam}
+            isGeneratingCam={isGeneratingCam}
+            canGenerateCam={Boolean(analysis && research && decision)}
+          />
 
           {!!uploadedFiles.length && (
             <p className="mt-4 text-xs text-slate-500">

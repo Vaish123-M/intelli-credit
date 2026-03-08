@@ -1,6 +1,10 @@
+from pathlib import Path
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
+from app.routes.cam import router as cam_router
 from app.routes.research import router as research_router
 from app.routes.risk_score import router as risk_score_router
 from app.routes.upload import router as upload_router
@@ -18,6 +22,11 @@ app.add_middleware(
 app.include_router(upload_router)
 app.include_router(research_router)
 app.include_router(risk_score_router)
+app.include_router(cam_router)
+
+DOWNLOADS_DIR = Path(__file__).resolve().parents[1] / "downloads"
+DOWNLOADS_DIR.mkdir(parents=True, exist_ok=True)
+app.mount("/downloads", StaticFiles(directory=str(DOWNLOADS_DIR)), name="downloads")
 
 
 @app.get("/")

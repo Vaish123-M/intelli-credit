@@ -22,7 +22,7 @@ function riskTone(riskCategory) {
   return 'green'
 }
 
-export default function AICreditDecision({ decision }) {
+export default function AICreditDecision({ decision, onGenerateCam, isGeneratingCam, canGenerateCam }) {
   if (!decision) return null
 
   const factors = decision.top_risk_factors || []
@@ -40,6 +40,17 @@ export default function AICreditDecision({ decision }) {
         <DecisionCard title="Risk Category" value={decision.risk_category || 'N/A'} tone={tone} />
         <DecisionCard title="Recommended Loan" value={decision.loan_limit || 'N/A'} />
         <DecisionCard title="Interest Rate" value={decision.interest_rate || 'N/A'} />
+      </div>
+
+      <div className="flex justify-end">
+        <button
+          type="button"
+          onClick={onGenerateCam}
+          disabled={!canGenerateCam || isGeneratingCam}
+          className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-700 disabled:cursor-not-allowed disabled:bg-slate-400"
+        >
+          {isGeneratingCam ? 'Generating CAM PDF...' : 'Download CAM Report'}
+        </button>
       </div>
 
       <div className="rounded-xl bg-white p-4 ring-1 ring-slate-200">

@@ -8,3 +8,6 @@ venv/
 
 # Frontend build artifacts
 frontend/dist/
+
+# Generated reports
+backend/downloads/
