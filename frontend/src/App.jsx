@@ -2,6 +2,7 @@ import { useState } from 'react'
 
 import CreditDashboard from './pages/CreditDashboard'
 import Home from './pages/Home'
+import PortfolioDashboard from './pages/PortfolioDashboard'
 
 export default function App() {
   const [activeView, setActiveView] = useState('underwriting')
@@ -28,10 +29,21 @@ export default function App() {
           >
             Credit Dashboard
           </button>
+          <button
+            type="button"
+            onClick={() => setActiveView('portfolio')}
+            className={`rounded-full px-4 py-2 text-sm font-semibold ${
+              activeView === 'portfolio' ? 'bg-rose-700 text-white' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+            }`}
+          >
+            Portfolio Monitor
+          </button>
         </div>
       </nav>
 
-      {activeView === 'underwriting' ? <Home /> : <CreditDashboard />}
+      {activeView === 'underwriting' && <Home />}
+      {activeView === 'dashboard' && <CreditDashboard />}
+      {activeView === 'portfolio' && <PortfolioDashboard />}
     </div>
   )
 }

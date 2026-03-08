@@ -7,6 +7,7 @@ from fastapi.staticfiles import StaticFiles
 from app.routes.cam import router as cam_router
 from app.routes.copilot import router as copilot_router
 from app.routes.dashboard import router as dashboard_router
+from app.routes.portfolio import router as portfolio_router
 from app.routes.research import router as research_router
 from app.routes.risk_score import router as risk_score_router
 from app.routes.upload import router as upload_router
@@ -27,6 +28,7 @@ app.include_router(risk_score_router)
 app.include_router(cam_router)
 app.include_router(dashboard_router)
 app.include_router(copilot_router)
+app.include_router(portfolio_router)
 
 DOWNLOADS_DIR = Path(__file__).resolve().parents[1] / "downloads"
 DOWNLOADS_DIR.mkdir(parents=True, exist_ok=True)

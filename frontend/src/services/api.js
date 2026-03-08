@@ -114,3 +114,19 @@ export async function askCopilotQuestion({ companyData, question }) {
     }),
   })
 }
+
+export async function getPortfolioSummary() {
+  return requestJson('/portfolio/summary')
+}
+
+export async function getPortfolioAlerts() {
+  return requestJson('/portfolio/alerts')
+}
+
+export async function getPortfolioCompanies() {
+  return requestJson('/portfolio/companies')
+}
+
+export async function getPortfolioHighRisk() {
+  return requestJson('/portfolio/high-risk')
+}

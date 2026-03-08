@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field
 
 from app.services.dashboard import add_deal
 from app.services.ml import build_credit_decision, build_feature_vector, get_top_risk_factors, score_risk
+from app.services.portfolio import add_portfolio_record
 
 router = APIRouter(tags=["risk-score"])
 
@@ -48,6 +49,14 @@ async def run_risk_score(payload: RiskScoreRequest) -> dict[str, Any]:
             "decision_status": decision_status,
             "top_risk_factors": top_factors,
         },
+    )
+
+    add_portfolio_record(
+        company_name=payload.company_name,
+        risk_score=risk_score,
+        risk_category=risk_category,
+        loan_limit=str(decision.get("loan_limit", "N/A")),
+        interest_rate=str(decision.get("interest_rate", "N/A")),
     )
 
     return {
