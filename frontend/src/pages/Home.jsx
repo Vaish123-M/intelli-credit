@@ -1,9 +1,10 @@
 import { useMemo, useState } from 'react'
 
+import AICreditDecision from '../components/AICreditDecision'
 import Dashboard from '../components/Dashboard'
 import FileUpload from '../components/FileUpload'
 import ResearchDashboard from '../components/ResearchDashboard'
-import { getResults, runAnalysis, runResearch, uploadFiles } from '../services/api'
+import { getResults, runAnalysis, runResearch, runRiskScore, uploadFiles } from '../services/api'
 
 export default function Home() {
   const [selectedFiles, setSelectedFiles] = useState([])
@@ -11,11 +12,13 @@ export default function Home() {
   const [extractedData, setExtractedData] = useState([])
   const [analysis, setAnalysis] = useState(null)
   const [research, setResearch] = useState(null)
+  const [decision, setDecision] = useState(null)
   const [companyName, setCompanyName] = useState('')
   const [promoterName, setPromoterName] = useState('')
   const [isUploading, setIsUploading] = useState(false)
   const [isProcessing, setIsProcessing] = useState(false)
   const [isResearching, setIsResearching] = useState(false)
+  const [isScoring, setIsScoring] = useState(false)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
 
@@ -23,8 +26,30 @@ export default function Home() {
     if (isUploading) return 'Uploading files to backend...'
     if (isProcessing) return 'Running extraction and financial analysis...'
     if (isResearching) return 'Running external research agent...'
+    if (isScoring) return 'Running AI credit risk model...'
     return ''
-  }, [isUploading, isProcessing, isResearching])
+  }, [isUploading, isProcessing, isResearching, isScoring])
+
+  const runScoring = async (financialAnalysis, externalIntelligence, { silent = false } = {}) => {
+    if (!financialAnalysis || !externalIntelligence) {
+      return null
+    }
+
+    setIsScoring(true)
+    try {
+      const payload = await runRiskScore({ financialAnalysis, externalIntelligence })
+      setDecision(payload || null)
+      if (!silent) {
+        setSuccess('AI credit decision generated successfully.')
+      }
+      return payload
+    } catch (scoringError) {
+      setError(scoringError.message || 'Risk scoring failed')
+      return null
+    } finally {
+      setIsScoring(false)
+    }
+  }
 
   const handleResearch = async ({ silent = false } = {}) => {
     const trimmedCompany = companyName.trim()
@@ -37,9 +62,15 @@ export default function Home() {
     setIsResearching(true)
     try {
       const payload = await runResearch({ companyName: trimmedCompany, promoterName: promoterName.trim() })
-      setResearch(payload.external_intelligence || null)
+      const nextResearch = payload.external_intelligence || null
+      const nextAnalysis = payload.financial_analysis || analysis
+
+      setResearch(nextResearch)
       if (payload.financial_analysis) {
-        setAnalysis(payload.financial_analysis)
+        setAnalysis(nextAnalysis)
+      }
+      if (nextAnalysis && nextResearch) {
+        await runScoring(nextAnalysis, nextResearch, { silent: true })
       }
       if (!silent) {
         setSuccess('External intelligence scan completed successfully.')
@@ -90,6 +121,7 @@ export default function Home() {
     try {
       const analysisResult = await runAnalysis()
       setAnalysis(analysisResult.analysis || null)
+      setDecision(null)
       if (analysisResult.extracted_data) {
         setExtractedData(analysisResult.extracted_data)
       }
@@ -111,6 +143,7 @@ export default function Home() {
       setUploadedFiles(latestResults.uploaded_files || [])
       setExtractedData(latestResults.extracted_data || [])
       setAnalysis(latestResults.analysis || null)
+      setDecision(null)
       setSuccess('Latest processed results loaded.')
     } catch (resultsError) {
       setError(resultsError.message || 'Could not load results')
@@ -162,7 +195,7 @@ export default function Home() {
               onFilesSelected={setSelectedFiles}
               onUpload={handleUpload}
               isUploading={isUploading}
-              isProcessing={isProcessing || isResearching}
+              isProcessing={isProcessing || isResearching || isScoring}
             />
           </div>
 
@@ -184,7 +217,7 @@ export default function Home() {
             <button
               type="button"
               onClick={() => handleResearch()}
-              disabled={isUploading || isProcessing || isResearching}
+              disabled={isUploading || isProcessing || isResearching || isScoring}
               className="rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-indigo-500 disabled:cursor-not-allowed disabled:bg-indigo-300"
             >
               {isResearching ? 'Researching...' : 'Run Research Agent'}
@@ -192,10 +225,12 @@ export default function Home() {
           </div>
 
           {statusLabel && <p className="mt-4 text-sm font-medium text-emerald-700">{statusLabel}</p>}
-          {(isProcessing || isResearching) && (
+          {(isProcessing || isResearching || isScoring) && (
             <div className="mt-3 flex items-center gap-2 text-sm text-slate-700">
               <span className="inline-block h-3 w-3 animate-pulse rounded-full bg-emerald-500" />
-              {isResearching
+              {isScoring
+                ? 'Scoring AI credit risk and generating decision recommendations...'
+                : isResearching
                 ? 'Gathering external intelligence, litigation, sector risk, and sentiment...'
                 : 'Processing documents and generating credit signals...'}
             </div>
@@ -205,6 +240,7 @@ export default function Home() {
 
           <Dashboard analysis={analysis} />
           <ResearchDashboard intelligence={research} />
+          <AICreditDecision decision={decision} />
 
           {!!uploadedFiles.length && (
             <p className="mt-4 text-xs text-slate-500">

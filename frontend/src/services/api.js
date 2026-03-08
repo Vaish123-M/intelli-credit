@@ -60,3 +60,16 @@ export async function runResearch({ companyName, promoterName }) {
     }),
   })
 }
+
+export async function runRiskScore({ financialAnalysis, externalIntelligence }) {
+  return requestJson('/risk-score', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      financial_analysis: financialAnalysis || {},
+      external_intelligence: externalIntelligence || {},
+    }),
+  })
+}
