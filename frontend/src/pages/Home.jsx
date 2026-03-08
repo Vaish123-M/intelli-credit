@@ -2,23 +2,56 @@ import { useMemo, useState } from 'react'
 
 import Dashboard from '../components/Dashboard'
 import FileUpload from '../components/FileUpload'
-import { getResults, runAnalysis, uploadFiles } from '../services/api'
+import ResearchDashboard from '../components/ResearchDashboard'
+import { getResults, runAnalysis, runResearch, uploadFiles } from '../services/api'
 
 export default function Home() {
   const [selectedFiles, setSelectedFiles] = useState([])
   const [uploadedFiles, setUploadedFiles] = useState([])
   const [extractedData, setExtractedData] = useState([])
   const [analysis, setAnalysis] = useState(null)
+  const [research, setResearch] = useState(null)
+  const [companyName, setCompanyName] = useState('')
+  const [promoterName, setPromoterName] = useState('')
   const [isUploading, setIsUploading] = useState(false)
   const [isProcessing, setIsProcessing] = useState(false)
+  const [isResearching, setIsResearching] = useState(false)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
 
   const statusLabel = useMemo(() => {
     if (isUploading) return 'Uploading files to backend...'
-    if (isProcessing) return 'Running extraction and analysis...'
+    if (isProcessing) return 'Running extraction and financial analysis...'
+    if (isResearching) return 'Running external research agent...'
     return ''
-  }, [isUploading, isProcessing])
+  }, [isUploading, isProcessing, isResearching])
+
+  const handleResearch = async ({ silent = false } = {}) => {
+    const trimmedCompany = companyName.trim()
+    if (!trimmedCompany) {
+      if (!silent) setError('Enter company name to run external intelligence research.')
+      return null
+    }
+
+    setError('')
+    setIsResearching(true)
+    try {
+      const payload = await runResearch({ companyName: trimmedCompany, promoterName: promoterName.trim() })
+      setResearch(payload.external_intelligence || null)
+      if (payload.financial_analysis) {
+        setAnalysis(payload.financial_analysis)
+      }
+      if (!silent) {
+        setSuccess('External intelligence scan completed successfully.')
+      }
+      return payload.external_intelligence || null
+    } catch (researchError) {
+      setError(researchError.message || 'Research agent failed')
+      return null
+    } finally {
+      setIsResearching(false)
+    }
+  }
 
   const handleUpload = async () => {
     if (!selectedFiles.length) {
@@ -37,6 +70,10 @@ export default function Home() {
       setExtractedData(uploadResult.extracted_data || [])
       setAnalysis(uploadResult.analysis || null)
       setSuccess('Files uploaded and credit analysis completed successfully.')
+
+      if (companyName.trim()) {
+        await handleResearch({ silent: true })
+      }
     } catch (uploadError) {
       setError(uploadError.message || 'Upload failed')
     } finally {
@@ -125,21 +162,49 @@ export default function Home() {
               onFilesSelected={setSelectedFiles}
               onUpload={handleUpload}
               isUploading={isUploading}
-              isProcessing={isProcessing}
+              isProcessing={isProcessing || isResearching}
             />
           </div>
 
+          <div className="mt-5 grid gap-3 md:grid-cols-3">
+            <input
+              type="text"
+              value={companyName}
+              onChange={(event) => setCompanyName(event.target.value)}
+              placeholder="Company name (required for research)"
+              className="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm text-slate-800 outline-none ring-emerald-200 focus:ring"
+            />
+            <input
+              type="text"
+              value={promoterName}
+              onChange={(event) => setPromoterName(event.target.value)}
+              placeholder="Promoter name (optional)"
+              className="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm text-slate-800 outline-none ring-emerald-200 focus:ring"
+            />
+            <button
+              type="button"
+              onClick={() => handleResearch()}
+              disabled={isUploading || isProcessing || isResearching}
+              className="rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-indigo-500 disabled:cursor-not-allowed disabled:bg-indigo-300"
+            >
+              {isResearching ? 'Researching...' : 'Run Research Agent'}
+            </button>
+          </div>
+
           {statusLabel && <p className="mt-4 text-sm font-medium text-emerald-700">{statusLabel}</p>}
-          {isProcessing && (
+          {(isProcessing || isResearching) && (
             <div className="mt-3 flex items-center gap-2 text-sm text-slate-700">
               <span className="inline-block h-3 w-3 animate-pulse rounded-full bg-emerald-500" />
-              Processing documents and generating credit signals...
+              {isResearching
+                ? 'Gathering external intelligence, litigation, sector risk, and sentiment...'
+                : 'Processing documents and generating credit signals...'}
             </div>
           )}
           {error && <p className="mt-4 rounded-lg bg-rose-100 px-4 py-2 text-sm text-rose-700">{error}</p>}
           {success && <p className="mt-4 rounded-lg bg-emerald-100 px-4 py-2 text-sm text-emerald-800">{success}</p>}
 
           <Dashboard analysis={analysis} />
+          <ResearchDashboard intelligence={research} />
 
           {!!uploadedFiles.length && (
             <p className="mt-4 text-xs text-slate-500">
