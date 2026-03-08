@@ -101,3 +101,16 @@ export async function getDashboardSummary() {
 export async function getDashboardDeals() {
   return requestJson('/dashboard/deals')
 }
+
+export async function askCopilotQuestion({ companyData, question }) {
+  return requestJson('/copilot/ask', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      company_data: companyData || {},
+      question: question || '',
+    }),
+  })
+}

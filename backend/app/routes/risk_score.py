@@ -41,6 +41,13 @@ async def run_risk_score(payload: RiskScoreRequest) -> dict[str, Any]:
         loan_limit=str(decision.get("loan_limit", "N/A")),
         interest_rate=str(decision.get("interest_rate", "N/A")),
         decision_status=decision_status,
+        financial_analysis=payload.financial_analysis,
+        external_intelligence=payload.external_intelligence,
+        risk_decision={
+            **decision,
+            "decision_status": decision_status,
+            "top_risk_factors": top_factors,
+        },
     )
 
     return {

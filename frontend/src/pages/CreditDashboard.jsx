@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react'
 import DashboardStats from '../components/dashboard/DashboardStats'
 import DealsTable from '../components/dashboard/DealsTable'
 import RiskChart from '../components/dashboard/RiskChart'
+import CopilotChat from '../components/dashboard/CopilotChat'
 import { getDashboardDeals, getDashboardSummary } from '../services/api'
 
 export default function CreditDashboard() {
@@ -68,6 +69,8 @@ export default function CreditDashboard() {
             <DealsTable deals={deals} />
           </div>
         </div>
+
+        <CopilotChat deals={deals} />
       </div>
     </main>
   )
