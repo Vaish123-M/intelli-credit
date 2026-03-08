@@ -47,3 +47,29 @@ export async function runAnalysis() {
 export async function getResults() {
   return requestJson('/results')
 }
+
+export async function runResearch({ companyName, promoterName }) {
+  return requestJson('/research', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      company_name: companyName,
+      promoter_name: promoterName || null,
+    }),
+  })
+}
+
+export async function runRiskScore({ financialAnalysis, externalIntelligence }) {
+  return requestJson('/risk-score', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      financial_analysis: financialAnalysis || {},
+      external_intelligence: externalIntelligence || {},
+    }),
+  })
+}
