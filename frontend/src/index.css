@@ -1,1 +1,14 @@
 @import "tailwindcss";
+
+:root {
+	font-family: "Segoe UI", "Trebuchet MS", Tahoma, Geneva, Verdana, sans-serif;
+}
+
+* {
+	box-sizing: border-box;
+}
+
+body {
+	margin: 0;
+	min-width: 320px;
+}
