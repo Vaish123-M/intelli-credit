@@ -1,0 +1,10 @@
+# Python cache artifacts
+__pycache__/
+*.py[cod]
+
+# Virtual environments
+.venv/
+venv/
+
+# Frontend build artifacts
+frontend/dist/
