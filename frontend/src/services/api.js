@@ -1,7 +1,31 @@
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000'
+const ENV_API_BASE_URL = import.meta.env.VITE_API_BASE_URL || ''
+
+let ACTIVE_API_BASE_URL = ENV_API_BASE_URL || 'http://127.0.0.1:8000'
+
+function buildCandidateUrls() {
+  const candidates = new Set()
+
+  if (ENV_API_BASE_URL) {
+    candidates.add(ENV_API_BASE_URL)
+  }
+
+  if (typeof window !== 'undefined') {
+    const { protocol, hostname } = window.location
+    const resolvedHost = hostname || '127.0.0.1'
+    const resolvedProtocol = protocol === 'https:' ? 'https:' : 'http:'
+
+    candidates.add(`${resolvedProtocol}//${resolvedHost}:8000`)
+    candidates.add('http://127.0.0.1:8000')
+    candidates.add('http://localhost:8000')
+  } else {
+    candidates.add('http://127.0.0.1:8000')
+  }
+
+  return Array.from(candidates)
+}
 
 export function getApiBaseUrl() {
-  return API_BASE_URL
+  return ACTIVE_API_BASE_URL
 }
 
 async function parseResponse(response) {
@@ -14,15 +38,27 @@ async function parseResponse(response) {
 }
 
 async function requestJson(path, options = {}) {
-  try {
-    const response = await fetch(`${API_BASE_URL}${path}`, options)
-    return await parseResponse(response)
-  } catch (error) {
-    if (error instanceof TypeError) {
-      throw new Error('Could not connect to backend API. Please ensure the backend server is running on port 8000.')
+  const candidates = buildCandidateUrls()
+  let lastError = null
+
+  for (const baseUrl of candidates) {
+    try {
+      const response = await fetch(`${baseUrl}${path}`, options)
+      ACTIVE_API_BASE_URL = baseUrl
+      return await parseResponse(response)
+    } catch (error) {
+      lastError = error
+      if (!(error instanceof TypeError)) {
+        throw error
+      }
     }
-    throw error
   }
+
+  if (lastError instanceof TypeError) {
+    throw new Error('Could not connect to backend API. Please ensure backend is running and reachable on port 8000.')
+  }
+
+  throw lastError || new Error('Request failed')
 }
 
 export async function uploadFiles(files) {
