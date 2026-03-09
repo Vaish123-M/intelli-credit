@@ -20,6 +20,10 @@ _RECORDS: list[PortfolioRecord] = []
 _LOCK = Lock()
 
 
+def _company_key(name: str) -> str:
+    return (name or '').strip().casefold()
+
+
 def _parse_loan_limit_to_inr(value: str | float | int | None) -> float:
     if value is None:
         return 0.0
@@ -57,8 +61,9 @@ def add_portfolio_record(
     loan_limit: str | float,
     interest_rate: str,
 ) -> PortfolioRecord:
+    normalized_company_name = company_name.strip() or 'Unknown Company'
     record = PortfolioRecord(
-        company_name=company_name.strip() or 'Unknown Company',
+        company_name=normalized_company_name,
         risk_score=round(float(risk_score), 2),
         risk_category=risk_category,
         loan_limit=round(_parse_loan_limit_to_inr(loan_limit), 2),
@@ -67,7 +72,14 @@ def add_portfolio_record(
     )
 
     with _LOCK:
-        _RECORDS.append(record)
+        # Keep one latest portfolio profile per company to avoid double counting re-runs.
+        company_key = _company_key(normalized_company_name)
+        for index, existing_record in enumerate(_RECORDS):
+            if _company_key(existing_record.company_name) == company_key:
+                _RECORDS[index] = record
+                break
+        else:
+            _RECORDS.append(record)
 
     return record
 

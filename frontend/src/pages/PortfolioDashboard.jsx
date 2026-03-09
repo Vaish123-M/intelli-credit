@@ -5,6 +5,8 @@ import HighRiskTable from '../components/portfolio/HighRiskTable'
 import PortfolioStats from '../components/portfolio/PortfolioStats'
 import { getPortfolioAlerts, getPortfolioHighRisk, getPortfolioSummary } from '../services/api'
 
+const AUTO_REFRESH_MS = 15000
+
 export default function PortfolioDashboard() {
   const [summary, setSummary] = useState({
     companies_analyzed: 0,
@@ -39,6 +41,12 @@ export default function PortfolioDashboard() {
 
   useEffect(() => {
     loadPortfolio()
+
+    const intervalId = window.setInterval(() => {
+      loadPortfolio()
+    }, AUTO_REFRESH_MS)
+
+    return () => window.clearInterval(intervalId)
   }, [])
 
   return (
@@ -65,16 +73,28 @@ export default function PortfolioDashboard() {
 
         {error && <p className="rounded-lg bg-rose-100 px-4 py-2 text-sm text-rose-700">{error}</p>}
 
-        {alerts.length > 0 && (
-          <section className="rounded-2xl bg-rose-50 p-4 ring-1 ring-rose-200">
-            <h3 className="text-sm font-bold uppercase tracking-[0.12em] text-rose-800">Risk Alerts</h3>
+        <section
+          className={`rounded-2xl p-4 ring-1 ${
+            alerts.length > 0 ? 'bg-rose-50 ring-rose-200' : 'bg-emerald-50 ring-emerald-200'
+          }`}
+        >
+          <h3
+            className={`text-sm font-bold uppercase tracking-[0.12em] ${
+              alerts.length > 0 ? 'text-rose-800' : 'text-emerald-800'
+            }`}
+          >
+            Risk Alerts
+          </h3>
+          {alerts.length > 0 ? (
             <ul className="mt-2 space-y-1 text-sm text-rose-700">
               {alerts.map((alert) => (
                 <li key={alert}>{alert}</li>
               ))}
             </ul>
-          </section>
-        )}
+          ) : (
+            <p className="mt-2 text-sm text-emerald-700">No active alerts. Portfolio risk is within configured limits.</p>
+          )}
+        </section>
 
         <PortfolioStats summary={summary} />
 
