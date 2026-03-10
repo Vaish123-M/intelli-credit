@@ -101,59 +101,153 @@ def _is_metric_label(text: str) -> bool:
     return any(k in t for k in ["revenue", "sales", "turnover", "ebitda", "debt", "equity", "net worth", "borrowings"])
 
 
+def _parse_financial_dataframe(df: pd.DataFrame, page_idx: int, table_idx: int) -> dict[str, int]:
+    parsed: dict[str, int] = {}
+    if df.empty or len(df.columns) < 2:
+        return parsed
+
+    df = df.fillna("")
+    df.columns = [_normalize_column_name(col) for col in df.columns]
+    logger.debug("Extracted table (page=%s, table=%s):\n%s", page_idx, table_idx, df.to_string(index=False))
+
+    metric_col = None
+    for col in df.columns:
+        sample = " ".join(df[col].astype(str).head(12).tolist())
+        if _is_metric_label(sample):
+            metric_col = col
+            break
+
+    if metric_col is None:
+        metric_col = df.columns[0]
+
+    value_cols = [c for c in df.columns if c != metric_col]
+    if not value_cols:
+        return parsed
+
+    year_candidates = []
+    for col in value_cols:
+        year_match = re.search(r"(19|20)\d{2}", col)
+        if year_match:
+            year_candidates.append((int(year_match.group(0)), col))
+
+    if year_candidates:
+        year_candidates.sort(key=lambda item: item[0])
+        current_col = year_candidates[-1][1]
+        previous_col = year_candidates[-2][1] if len(year_candidates) > 1 else None
+    else:
+        # Choose rightmost column with most numeric values.
+        scored_cols = []
+        for col in value_cols:
+            numeric_hits = sum(1 for v in df[col].tolist() if _clean_numeric_value(v) is not None)
+            scored_cols.append((numeric_hits, col))
+        scored_cols.sort(key=lambda item: item[0])
+        current_col = scored_cols[-1][1] if scored_cols else value_cols[-1]
+        previous_col = value_cols[-2] if len(value_cols) > 1 else None
+
+    for _, row in df.iterrows():
+        label = str(row.get(metric_col, "")).strip().lower()
+        current_val = _clean_numeric_value(row.get(current_col))
+        previous_val = _clean_numeric_value(row.get(previous_col)) if previous_col else None
+
+        if current_val is None or not _is_metric_label(label):
+            continue
+
+        if any(k in label for k in ["revenue", "sales", "turnover"]):
+            parsed["revenue"] = current_val
+            if previous_val is not None:
+                parsed["revenue_previous"] = previous_val
+        elif "ebitda" in label:
+            parsed["ebitda"] = current_val
+        elif "equity" in label or "net worth" in label or "shareholder" in label:
+            parsed["equity"] = current_val
+        elif "total debt" in label or "borrowings" in label or label == "debt" or label.endswith(" debt"):
+            parsed["debt"] = current_val
+
+    return parsed
+
+
+def _extract_financials_from_text_table(text: str) -> dict[str, int]:
+    parsed: dict[str, int] = {}
+    lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
+    rows: list[list[str]] = []
+
+    for line in lines:
+        if "|" in line:
+            parts = [p.strip() for p in line.split("|") if p.strip()]
+            if len(parts) >= 3:
+                rows.append(parts)
+        else:
+            # Fallback for space-delimited rows
+            parts = re.split(r"\s{2,}", line)
+            parts = [p.strip() for p in parts if p.strip()]
+            if len(parts) >= 3:
+                rows.append(parts)
+
+    if len(rows) < 2:
+        return parsed
+
+    header = rows[0]
+    body = rows[1:]
+    normalized_rows = []
+    for r in body:
+        if len(r) < len(header):
+            r = r + [""] * (len(header) - len(r))
+        normalized_rows.append(r[: len(header)])
+
+    df = pd.DataFrame(normalized_rows, columns=header)
+    parsed = _parse_financial_dataframe(df, page_idx=0, table_idx=0)
+    if parsed:
+        logger.debug("Parsed financial values from text-table fallback: %s", parsed)
+    return parsed
+
+
+def _extract_financials_from_csv(path: Path) -> dict[str, int]:
+    parsed: dict[str, int] = {}
+    try:
+        df = pd.read_csv(path)
+    except Exception:  # noqa: BLE001
+        try:
+            df = pd.read_csv(path, encoding="latin-1")
+        except Exception:  # noqa: BLE001
+            return parsed
+
+    parsed = _parse_financial_dataframe(df, page_idx=0, table_idx=1)
+    if parsed:
+        logger.debug("Parsed financial values from CSV: %s", parsed)
+    return parsed
+
+
 def _extract_financials_from_pdf_tables(path: Path) -> dict[str, int]:
     parsed: dict[str, int] = {}
 
     with pdfplumber.open(str(path)) as pdf:
         for page_idx, page in enumerate(pdf.pages, start=1):
-            tables = page.extract_tables() or []
-            for table_idx, table in enumerate(tables, start=1):
+            table_candidates = []
+            strategies = [
+                {},
+                {"vertical_strategy": "text", "horizontal_strategy": "text"},
+                {"snap_tolerance": 3, "join_tolerance": 3, "edge_min_length": 3},
+            ]
+            for settings in strategies:
+                try:
+                    table_candidates.extend(page.extract_tables(table_settings=settings) or [])
+                except Exception:  # noqa: BLE001
+                    continue
+
+            for table_idx, table in enumerate(table_candidates, start=1):
                 if not table or len(table) < 2:
                     continue
 
                 raw_columns = table[0]
                 rows = table[1:]
                 df = pd.DataFrame(rows, columns=raw_columns)
-                df.columns = [_normalize_column_name(col) for col in df.columns]
-                df = df.fillna("")
+                table_parsed = _parse_financial_dataframe(df, page_idx, table_idx)
+                parsed.update(table_parsed)
 
-                logger.debug("Extracted table (page=%s, table=%s):\n%s", page_idx, table_idx, df.to_string(index=False))
-
-                metric_col = None
-                for col in df.columns:
-                    sample = " ".join(df[col].astype(str).head(8).tolist())
-                    if _is_metric_label(sample):
-                        metric_col = col
-                        break
-
-                if metric_col is None:
-                    continue
-
-                value_cols = [c for c in df.columns if c != metric_col]
-                if not value_cols:
-                    continue
-
-                current_col = value_cols[-1]  # Rightmost column is treated as latest FY.
-                previous_col = value_cols[-2] if len(value_cols) > 1 else None
-
-                for _, row in df.iterrows():
-                    label = str(row.get(metric_col, "")).strip().lower()
-                    current_val = _clean_numeric_value(row.get(current_col))
-                    previous_val = _clean_numeric_value(row.get(previous_col)) if previous_col else None
-
-                    if current_val is None:
-                        continue
-
-                    if any(k in label for k in ["revenue", "sales", "turnover"]):
-                        parsed["revenue"] = current_val
-                        if previous_val is not None:
-                            parsed["revenue_previous"] = previous_val
-                    elif "ebitda" in label:
-                        parsed["ebitda"] = current_val
-                    elif "equity" in label or "net worth" in label or "shareholder" in label:
-                        parsed["equity"] = current_val
-                    elif "total debt" in label or "borrowings" in label or label == "debt" or label.endswith(" debt"):
-                        parsed["debt"] = current_val
+            # If regular table extraction fails, try parsing text as table-like rows.
+            if not parsed:
+                text_fallback = _extract_financials_from_text_table(page.extract_text() or "")
+                parsed.update(text_fallback)
 
     logger.debug("Parsed financial values from PDF tables: %s", parsed)
     return parsed
@@ -200,18 +294,14 @@ def _extract_metrics(text: str) -> dict[str, float]:
 
     if revenue is None and values:
         revenue = max(values)
-    if debt is None:
-        debt = revenue * 0.52 if revenue else 12_000_000.0
-    if equity is None:
-        equity = revenue * 0.41 if revenue else 10_000_000.0
-    if ebitda is None:
-        ebitda = revenue * 0.16 if revenue else 4_000_000.0
-    if bank_credits is None:
-        bank_credits = revenue * 0.92 if revenue else 20_000_000.0
-    if bank_debits is None:
-        bank_debits = revenue * 0.84 if revenue else 17_500_000.0
-    if gst_turnover is None:
-        gst_turnover = revenue * 0.97 if revenue else 0.0
+
+    # Do not inject synthetic values; preserve extraction truth.
+    debt = debt if debt is not None else 0.0
+    equity = equity if equity is not None else 0.0
+    ebitda = ebitda if ebitda is not None else 0.0
+    bank_credits = bank_credits if bank_credits is not None else 0.0
+    bank_debits = bank_debits if bank_debits is not None else 0.0
+    gst_turnover = gst_turnover if gst_turnover is not None else 0.0
 
     return {
         "revenue": float(revenue or 0.0),
@@ -236,15 +326,18 @@ def _merge_metrics(table_metrics: dict[str, int], text_metrics: dict[str, float]
 def _build_analysis(extracted_data: list[dict[str, Any]]) -> dict[str, Any]:
     if not extracted_data:
         return {
-            "revenue": 0,
-            "debt_equity_ratio": 0,
-            "ebitda_margin": 0,
+            "revenue": None,
+            "ebitda": None,
+            "debt": None,
+            "equity": None,
+            "debt_equity_ratio": None,
+            "ebitda_margin": None,
             "gst_mismatch": False,
-            "gst_difference_percent": 0,
-            "bank_cashflow": 0,
-            "bank_total_credits": 0,
-            "bank_total_debits": 0,
-            "revenue_growth": 0,
+            "gst_difference_percent": None,
+            "bank_cashflow": None,
+            "bank_total_credits": None,
+            "bank_total_debits": None,
+            "revenue_growth": None,
             "risk_flags": ["No parsable files"],
         }
 
@@ -257,36 +350,41 @@ def _build_analysis(extracted_data: list[dict[str, Any]]) -> dict[str, Any]:
     bank_debits = sum(item["metrics"]["bank_debits"] for item in extracted_data)
     gst_turnover = sum(item["metrics"]["gst_turnover"] for item in extracted_data)
 
-    debt_equity_ratio = debt / max(equity, 1)
-    ebitda_margin = (ebitda / revenue) if revenue > 0 else 0.0
-    gst_difference_percent = abs(gst_turnover - revenue) / max(revenue, 1) * 100
-    gst_mismatch = gst_difference_percent > 10
+    debt_equity_ratio = (debt / equity) if equity > 0 else None
+    ebitda_margin = (ebitda / revenue) if revenue > 0 else None
+    gst_difference_percent = (abs(gst_turnover - revenue) / revenue * 100) if (revenue > 0 and gst_turnover > 0) else None
+    gst_mismatch = (gst_difference_percent or 0) > 10
     bank_cashflow = bank_credits - bank_debits
-    revenue_growth = ((revenue - revenue_previous) / revenue_previous) if revenue_previous > 0 else 0.0
+    revenue_growth = ((revenue - revenue_previous) / revenue_previous) if revenue_previous > 0 else None
 
     flags: list[str] = []
-    if debt_equity_ratio > 2.0:
+    if debt_equity_ratio is not None and debt_equity_ratio > 2.0:
         flags.append("High leverage")
-    if ebitda_margin < 0.10:
+    if ebitda_margin is not None and ebitda_margin < 0.10:
         flags.append("Low operating margin")
+    if revenue_growth is not None and revenue_growth < 0:
+        flags.append("Declining business")
     if gst_mismatch:
         flags.append("GST turnover mismatch")
     if bank_cashflow < 0:
         flags.append("Negative bank cashflow")
 
+    if revenue <= 0:
+        flags.append("Revenue not extracted")
+
     final_metrics = {
-        "revenue": round(revenue, 2),
-        "ebitda": round(ebitda, 2),
-        "debt": round(debt, 2),
-        "equity": round(equity, 2),
-        "debt_equity_ratio": round(debt_equity_ratio, 4),
-        "ebitda_margin": round(ebitda_margin, 4),
+        "revenue": round(revenue, 2) if revenue > 0 else None,
+        "ebitda": round(ebitda, 2) if ebitda > 0 else None,
+        "debt": round(debt, 2) if debt > 0 else None,
+        "equity": round(equity, 2) if equity > 0 else None,
+        "debt_equity_ratio": round(debt_equity_ratio, 4) if debt_equity_ratio is not None else None,
+        "ebitda_margin": round(ebitda_margin, 4) if ebitda_margin is not None else None,
         "gst_mismatch": gst_mismatch,
-        "gst_difference_percent": round(gst_difference_percent, 2),
-        "bank_cashflow": round(bank_cashflow, 2),
-        "bank_total_credits": round(bank_credits, 2),
-        "bank_total_debits": round(bank_debits, 2),
-        "revenue_growth": round(revenue_growth, 4),
+        "gst_difference_percent": round(gst_difference_percent, 2) if gst_difference_percent is not None else None,
+        "bank_cashflow": round(bank_cashflow, 2) if (bank_credits > 0 or bank_debits > 0) else None,
+        "bank_total_credits": round(bank_credits, 2) if bank_credits > 0 else None,
+        "bank_total_debits": round(bank_debits, 2) if bank_debits > 0 else None,
+        "revenue_growth": round(revenue_growth, 4) if revenue_growth is not None else None,
         "risk_flags": flags,
     }
     logger.debug("Final calculated metrics: %s", final_metrics)
@@ -331,6 +429,10 @@ async def upload(files: list[UploadFile] = File(...)) -> dict[str, Any]:
                 table_metrics = _extract_financials_from_pdf_tables(target)
             except Exception as table_error:  # noqa: BLE001
                 logger.exception("Table parsing failed for %s: %s", target.name, table_error)
+        elif target.suffix.lower() == ".csv":
+            table_metrics = _extract_financials_from_csv(target)
+        else:
+            table_metrics = _extract_financials_from_text_table(parsed_text)
 
         metrics = _merge_metrics(table_metrics, text_metrics)
         logger.debug("Metrics after merge (%s): %s", target.name, metrics)

@@ -56,7 +56,7 @@ export default function Dashboard({ analysis }) {
         <MetricCard
           title="GST Mismatch"
           value={analysis.gst_mismatch ? 'Yes' : 'No'}
-          hint={`Difference: ${formatRatio(analysis.gst_difference_percent || 0)}%`}
+          hint={`Difference: ${formatRatio(analysis.gst_difference_percent)}${analysis.gst_difference_percent == null ? '' : '%'}`}
           tone={analysis.gst_mismatch ? 'rose' : 'green'}
         />
         <MetricCard
