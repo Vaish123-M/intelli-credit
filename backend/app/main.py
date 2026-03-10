@@ -16,7 +16,7 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 from pypdf import PdfReader
 
-from app.services.ml import build_credit_recommendation
+from app.services.ml import build_credit_recommendation, generate_swot_analysis
 from app.services.research import run_secondary_research
 
 APP_ROOT = Path(__file__).resolve().parent.parent
@@ -48,6 +48,22 @@ state: dict[str, Any] = {
     "entities": {},
     "current_entity_id": None,
 }
+
+
+def _format_swot_for_report(swot: dict[str, Any]) -> list[str]:
+    sections = [
+        ("Strengths", swot.get("strengths") or []),
+        ("Weaknesses", swot.get("weaknesses") or []),
+        ("Opportunities", swot.get("opportunities") or []),
+        ("Threats", swot.get("threats") or []),
+    ]
+    lines: list[str] = ["SWOT Analysis:"]
+    for title, items in sections:
+        lines.append(title)
+        for item in items:
+            lines.append(f"- {item}")
+        lines.append("")
+    return lines
 
 DOC_TYPES = [
     "ALM (Asset Liability Management)",
@@ -1009,6 +1025,18 @@ def risk_score(payload: RiskScoreRequest) -> dict[str, Any]:
     )
     loan_decision = str(recommendation.get("decision") or "Review")
 
+    pre_decision_payload = {
+        "risk_score": round(risk, 4),
+        "risk_category": risk_category,
+        "loan_decision": loan_decision,
+        "reasoning": recommendation.get("reasoning", []),
+    }
+    swot = generate_swot_analysis(
+        financial_metrics=analysis,
+        risk_analysis=pre_decision_payload,
+        secondary_research_signals=intelligence,
+    )
+
     decision = {
         "company_name": payload.company_name,
         "risk_score": round(risk, 4),
@@ -1017,6 +1045,7 @@ def risk_score(payload: RiskScoreRequest) -> dict[str, Any]:
         "interest_rate": recommendation.get("recommended_interest_rate", interest_rate),
         "loan_decision": loan_decision,
         "reasoning": recommendation.get("reasoning", []),
+        "swot_analysis": swot,
         "top_risk_factors": factors,
         "decision_status": "Approved" if loan_decision == "Approve" else ("Review Required" if loan_decision == "Review" else "Rejected"),
         "timestamp": datetime.utcnow().isoformat() + "Z",
@@ -1054,6 +1083,8 @@ def generate_cam(payload: CamRequest) -> dict[str, str]:
                 "",
                 "Risk Decision:",
                 str(payload.risk_decision),
+                "",
+                *_format_swot_for_report((payload.risk_decision or {}).get("swot_analysis") or {}),
             ]
         ),
         encoding="utf-8",

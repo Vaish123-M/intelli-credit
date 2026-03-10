@@ -33,6 +33,11 @@ export default function AICreditDecision({ decision, onGenerateCam, isGenerating
 
   const factors = decision.top_risk_factors || []
   const reasoning = decision.reasoning || factors
+  const swot = decision.swot_analysis || {}
+  const strengths = swot.strengths || []
+  const weaknesses = swot.weaknesses || []
+  const opportunities = swot.opportunities || []
+  const threats = swot.threats || []
   const tone = riskTone(decision.risk_category)
   const loanDecision = decision.loan_decision || (decision.decision_status === 'Approved' ? 'Approve' : decision.decision_status === 'Rejected' ? 'Reject' : 'Review')
   const explainTone = decisionTone(loanDecision)
@@ -91,6 +96,48 @@ export default function AICreditDecision({ decision, onGenerateCam, isGenerating
         ) : (
           <p className="mt-2 text-sm text-slate-600">No significant risk drivers detected.</p>
         )}
+      </div>
+
+      <div className="rounded-xl bg-white p-4 ring-1 ring-slate-200">
+        <p className="text-xs font-bold uppercase tracking-[0.12em] text-slate-500">SWOT Analysis</p>
+
+        <div className="mt-2 grid gap-3 md:grid-cols-2">
+          <div className="rounded-lg bg-emerald-50 p-3">
+            <p className="text-xs font-semibold uppercase tracking-widest text-emerald-800">Strengths</p>
+            <ul className="mt-2 space-y-1 text-sm text-slate-700">
+              {(strengths.length ? strengths : ['No major strengths identified']).map((item, idx) => (
+                <li key={`strength-${idx}`} className="rounded bg-white/70 px-2 py-1">{item}</li>
+              ))}
+            </ul>
+          </div>
+
+          <div className="rounded-lg bg-amber-50 p-3">
+            <p className="text-xs font-semibold uppercase tracking-widest text-amber-800">Weaknesses</p>
+            <ul className="mt-2 space-y-1 text-sm text-slate-700">
+              {(weaknesses.length ? weaknesses : ['No major weaknesses identified']).map((item, idx) => (
+                <li key={`weakness-${idx}`} className="rounded bg-white/70 px-2 py-1">{item}</li>
+              ))}
+            </ul>
+          </div>
+
+          <div className="rounded-lg bg-blue-50 p-3">
+            <p className="text-xs font-semibold uppercase tracking-widest text-blue-800">Opportunities</p>
+            <ul className="mt-2 space-y-1 text-sm text-slate-700">
+              {(opportunities.length ? opportunities : ['No clear opportunities identified']).map((item, idx) => (
+                <li key={`opportunity-${idx}`} className="rounded bg-white/70 px-2 py-1">{item}</li>
+              ))}
+            </ul>
+          </div>
+
+          <div className="rounded-lg bg-rose-50 p-3">
+            <p className="text-xs font-semibold uppercase tracking-widest text-rose-800">Threats</p>
+            <ul className="mt-2 space-y-1 text-sm text-slate-700">
+              {(threats.length ? threats : ['No immediate threats identified']).map((item, idx) => (
+                <li key={`threat-${idx}`} className="rounded bg-white/70 px-2 py-1">{item}</li>
+              ))}
+            </ul>
+          </div>
+        </div>
       </div>
     </section>
   )
