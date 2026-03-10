@@ -16,6 +16,7 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 from pypdf import PdfReader
 
+from app.services.cam import generate_final_report_pdf
 from app.services.ml import build_credit_recommendation, generate_swot_analysis
 from app.services.research import run_secondary_research
 
@@ -124,6 +125,15 @@ class RiskScoreRequest(BaseModel):
 
 class CamRequest(BaseModel):
     company_name: str
+    entity_id: str | None = None
+    financial_analysis: dict[str, Any] = Field(default_factory=dict)
+    external_intelligence: dict[str, Any] = Field(default_factory=dict)
+    risk_decision: dict[str, Any] = Field(default_factory=dict)
+
+
+class FinalReportRequest(BaseModel):
+    company_name: str
+    entity_id: str | None = None
     financial_analysis: dict[str, Any] = Field(default_factory=dict)
     external_intelligence: dict[str, Any] = Field(default_factory=dict)
     risk_decision: dict[str, Any] = Field(default_factory=dict)
@@ -1091,6 +1101,66 @@ def generate_cam(payload: CamRequest) -> dict[str, str]:
     )
 
     return {"cam_report_url": f"/downloads/{report_name}"}
+
+
+@app.post("/generate-final-report")
+def generate_final_report(payload: FinalReportRequest) -> dict[str, str]:
+    timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+    safe_name = re.sub(r"[^a-zA-Z0-9_]+", "_", payload.company_name.lower()).strip("_") or "company"
+    report_name = f"final_credit_assessment_{safe_name}_{timestamp}.pdf"
+    report_path = DOWNLOADS_DIR / report_name
+
+    company_overview: dict[str, Any] = {
+        "company_name": payload.company_name,
+        "cin": "N/A",
+        "pan": "N/A",
+        "sector": payload.external_intelligence.get("sector", "N/A"),
+        "annual_turnover": payload.financial_analysis.get("revenue"),
+    }
+    loan_details: dict[str, Any] = {
+        "loan_type": "N/A",
+        "loan_amount": "N/A",
+        "loan_tenure": "N/A",
+        "interest_rate": payload.risk_decision.get("interest_rate", "N/A"),
+    }
+
+    resolved_entity_id = _resolve_entity_id(payload.entity_id)
+    if resolved_entity_id:
+        entity_bucket = _get_entity_bucket(resolved_entity_id)
+        company_overview = {
+            "company_name": entity_bucket.get("company_name") or payload.company_name,
+            "cin": entity_bucket.get("cin", "N/A"),
+            "pan": entity_bucket.get("pan", "N/A"),
+            "sector": entity_bucket.get("sector", payload.external_intelligence.get("sector", "N/A")),
+            "annual_turnover": entity_bucket.get("annual_turnover") or payload.financial_analysis.get("revenue"),
+        }
+        loan_details = {
+            "loan_type": entity_bucket.get("loan_type", "N/A"),
+            "loan_amount": entity_bucket.get("loan_amount", "N/A"),
+            "loan_tenure": entity_bucket.get("loan_tenure", "N/A"),
+            "interest_rate": entity_bucket.get("interest_rate") or payload.risk_decision.get("interest_rate", "N/A"),
+        }
+
+    swot = payload.risk_decision.get("swot_analysis") or generate_swot_analysis(
+        financial_metrics=payload.financial_analysis,
+        risk_analysis=payload.risk_decision,
+        secondary_research_signals=payload.external_intelligence,
+    )
+
+    try:
+        generate_final_report_pdf(
+            output_path=report_path,
+            company_overview=company_overview,
+            loan_details=loan_details,
+            financial_metrics=payload.financial_analysis,
+            risk_decision=payload.risk_decision,
+            secondary_research=payload.external_intelligence,
+            swot_analysis=swot,
+        )
+    except RuntimeError as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+    return {"final_report_url": f"/downloads/{report_name}"}
 
 
 @app.get("/downloads/{filename}")

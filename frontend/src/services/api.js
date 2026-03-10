@@ -166,6 +166,23 @@ export async function generateCamReport({ companyName, financialAnalysis, extern
     },
     body: JSON.stringify({
       company_name: companyName,
+      entity_id: null,
+      financial_analysis: financialAnalysis || {},
+      external_intelligence: externalIntelligence || {},
+      risk_decision: riskDecision || {},
+    }),
+  })
+}
+
+export async function generateFinalReport({ companyName, entityId, financialAnalysis, externalIntelligence, riskDecision }) {
+  return requestJson('/generate-final-report', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      company_name: companyName,
+      entity_id: entityId || null,
       financial_analysis: financialAnalysis || {},
       external_intelligence: externalIntelligence || {},
       risk_decision: riskDecision || {},

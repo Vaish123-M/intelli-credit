@@ -28,7 +28,14 @@ function decisionTone(loanDecision) {
   return 'green'
 }
 
-export default function AICreditDecision({ decision, onGenerateCam, isGeneratingCam, canGenerateCam }) {
+export default function AICreditDecision({
+  decision,
+  onGenerateCam,
+  onGenerateFinalReport,
+  isGeneratingCam,
+  isGeneratingFinalReport,
+  canGenerateCam,
+}) {
   if (!decision) return null
 
   const factors = decision.top_risk_factors || []
@@ -57,7 +64,15 @@ export default function AICreditDecision({ decision, onGenerateCam, isGenerating
         <DecisionCard title="Interest Rate" value={decision.interest_rate || 'N/A'} hint={decision.decision_status || ''} />
       </div>
 
-      <div className="flex justify-end">
+      <div className="flex flex-wrap justify-end gap-2">
+        <button
+          type="button"
+          onClick={onGenerateFinalReport}
+          disabled={!canGenerateCam || isGeneratingFinalReport}
+          className="rounded-xl bg-linear-to-r from-emerald-600 via-blue-600 to-slate-800 px-4 py-2 text-sm font-semibold text-white shadow-md transition hover:scale-[1.03] disabled:cursor-not-allowed disabled:opacity-70"
+        >
+          {isGeneratingFinalReport ? 'Generating Final PDF...' : 'Download Final Report'}
+        </button>
         <button
           type="button"
           onClick={onGenerateCam}

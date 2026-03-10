@@ -13,6 +13,7 @@ import useRevealOnScroll from '../hooks/useRevealOnScroll'
 import {
   classifyDocuments,
   generateCamReport,
+  generateFinalReport,
   getApiBaseUrl,
   getResults,
   onboardEntity,
@@ -90,6 +91,7 @@ export default function Home() {
   const [isResearching, setIsResearching] = useState(false)
   const [isScoring, setIsScoring] = useState(false)
   const [isGeneratingCam, setIsGeneratingCam] = useState(false)
+  const [isGeneratingFinalReport, setIsGeneratingFinalReport] = useState(false)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
 
@@ -100,8 +102,9 @@ export default function Home() {
     if (isResearching) return 'Running external research agent...'
     if (isScoring) return 'Running AI credit risk model...'
     if (isGeneratingCam) return 'Generating credit approval memo report...'
+    if (isGeneratingFinalReport) return 'Generating final investment/credit assessment report...'
     return ''
-  }, [isClassifying, isUploading, isProcessing, isResearching, isScoring, isGeneratingCam])
+  }, [isClassifying, isUploading, isProcessing, isResearching, isScoring, isGeneratingCam, isGeneratingFinalReport])
 
   const handleFilesSelected = (files) => {
     setSelectedFiles(files)
@@ -180,6 +183,39 @@ export default function Home() {
       setError(camError.message || 'CAM report generation failed')
     } finally {
       setIsGeneratingCam(false)
+    }
+  }
+
+  const handleGenerateFinalReport = async () => {
+    const finalCompanyName = companyName.trim() || 'Intelli Credit Applicant'
+    if (!analysis || !research || !decision) {
+      setError('Run financial analysis, research, and AI scoring before generating final report.')
+      return
+    }
+
+    setError('')
+    setIsGeneratingFinalReport(true)
+    try {
+      const payload = await generateFinalReport({
+        companyName: finalCompanyName,
+        entityId,
+        financialAnalysis: analysis,
+        externalIntelligence: research,
+        riskDecision: decision,
+      })
+
+      const reportPath = payload.final_report_url
+      if (!reportPath) {
+        throw new Error('Final report URL not returned by server.')
+      }
+
+      const downloadUrl = reportPath.startsWith('http') ? reportPath : `${getApiBaseUrl()}${reportPath}`
+      window.open(downloadUrl, '_blank', 'noopener,noreferrer')
+      setSuccess('Final assessment PDF generated successfully. Download started.')
+    } catch (reportError) {
+      setError(reportError.message || 'Final report generation failed')
+    } finally {
+      setIsGeneratingFinalReport(false)
     }
   }
 
@@ -547,6 +583,8 @@ export default function Home() {
                 label={
                   isClassifying
                     ? 'Reading file names, keywords, and table patterns for document classification...'
+                    : isGeneratingFinalReport
+                    ? 'Compiling company overview, financials, risk, research, and SWOT into final PDF report...'
                     : isGeneratingCam
                     ? 'Formatting 5C report and rendering CAM PDF...'
                     : isScoring
@@ -575,7 +613,9 @@ export default function Home() {
           <AICreditDecision
             decision={decision}
             onGenerateCam={handleGenerateCam}
+            onGenerateFinalReport={handleGenerateFinalReport}
             isGeneratingCam={isGeneratingCam}
+            isGeneratingFinalReport={isGeneratingFinalReport}
             canGenerateCam={Boolean(analysis && research && decision)}
           />
 
