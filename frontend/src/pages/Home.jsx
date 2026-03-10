@@ -20,6 +20,14 @@ const FEATURE_CARDS = [
   { icon: '📈', title: 'Portfolio Monitoring', description: 'Track aggregate risk mix and identify high-risk exposure in real time.' },
 ]
 
+const WORKFLOW_STEPS = [
+  { id: '01', label: 'Upload docs', icon: '📄', detail: 'GST, bank statements, and financials' },
+  { id: '02', label: 'Extract & analyze', icon: '📊', detail: 'Parse metrics and compute key ratios' },
+  { id: '03', label: 'Research intelligence', icon: '🌐', detail: 'Pull litigation, sector, and sentiment' },
+  { id: '04', label: 'AI risk scoring', icon: '🤖', detail: 'Generate explainable risk class and score' },
+  { id: '05', label: 'Generate CAM report', icon: '📝', detail: 'Create downloadable credit memo output' },
+]
+
 function RevealSection({ children, className = '', delay = 0 }) {
   const { ref, controls } = useRevealOnScroll()
 
@@ -324,13 +332,26 @@ export default function Home() {
         <RevealSection className="glass-card rounded-3xl p-6" delay={0.1}>
           <p className="text-xs font-semibold uppercase tracking-[0.2em] text-sky-700">Demo Workflow</p>
           <h3 className="mt-2 text-2xl font-extrabold text-slate-900">From upload to decision in minutes</h3>
-          <ol className="mt-4 grid gap-3 text-sm text-slate-700 md:grid-cols-5">
-            <li className="rounded-xl bg-white/70 p-3 ring-1 ring-slate-200">1. Upload docs 📄</li>
-            <li className="rounded-xl bg-white/70 p-3 ring-1 ring-slate-200">2. Extract & analyze 📊</li>
-            <li className="rounded-xl bg-white/70 p-3 ring-1 ring-slate-200">3. Research intelligence 🌐</li>
-            <li className="rounded-xl bg-white/70 p-3 ring-1 ring-slate-200">4. AI risk scoring 🤖</li>
-            <li className="rounded-xl bg-white/70 p-3 ring-1 ring-slate-200">5. Generate CAM report 📝</li>
-          </ol>
+          <div className="workflow-flowchart mt-5">
+            {WORKFLOW_STEPS.map((step, index) => (
+              <div key={step.id} className="workflow-flowchart-item">
+                <article className="workflow-node">
+                  <p className="workflow-node-id">Step {step.id}</p>
+                  <h4 className="mt-1 text-sm font-extrabold text-slate-900 sm:text-base">
+                    {step.label} <span aria-hidden="true">{step.icon}</span>
+                  </h4>
+                  <p className="mt-1 text-xs text-slate-600">{step.detail}</p>
+                </article>
+
+                {index < WORKFLOW_STEPS.length - 1 && (
+                  <div className="workflow-arrow" aria-hidden="true">
+                    <span className="workflow-arrow-right">→</span>
+                    <span className="workflow-arrow-down">↓</span>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
         </RevealSection>
 
         <RevealSection className="glass-card rounded-3xl p-6 shadow-lg ring-1 ring-white/60" delay={0.12}>
