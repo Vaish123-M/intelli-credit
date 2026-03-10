@@ -36,22 +36,45 @@ export default function CreditDashboard() {
   }, [])
 
   return (
-    <main className="min-h-screen bg-[radial-gradient(circle_at_top_left,#dbeafe,#f8fafc_35%,#fef3c7_90%)] px-4 py-8">
+    <main className="min-h-screen px-4 py-8 sm:px-6 lg:px-8">
       <div className="mx-auto max-w-6xl space-y-6">
-        <header className="rounded-3xl bg-slate-900 p-6 text-white shadow-xl">
-          <p className="text-xs uppercase tracking-[0.2em] text-sky-200">Intelli-Credit</p>
+        <header className="rounded-3xl border border-white/40 bg-gradient-to-r from-blue-700 via-purple-700 to-emerald-500 p-6 text-white shadow-2xl shadow-blue-900/20">
+          <p className="text-xs uppercase tracking-[0.2em] text-blue-100">Intelli-Credit</p>
           <h1 className="mt-2 text-3xl font-black tracking-tight md:text-4xl">Credit Decision Dashboard</h1>
           <p className="mt-3 max-w-2xl text-sm text-slate-200 md:text-base">
             Centralized portfolio view of analyzed companies, risk segments, and lending decisions.
           </p>
         </header>
 
+        <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <article className="glass-card gradient-outline feature-lift rounded-2xl p-4">
+            <p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-600">📉 Avg Risk Score</p>
+            <p className="mt-2 text-2xl font-black text-slate-900">0.42</p>
+            <p className="text-xs text-amber-700">Medium Risk ⚠</p>
+          </article>
+          <article className="glass-card gradient-outline feature-lift rounded-2xl p-4">
+            <p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-600">✅ Recommendation</p>
+            <p className="mt-2 text-2xl font-black text-slate-900">Review Required</p>
+            <p className="text-xs text-purple-700">Policy + AI blended</p>
+          </article>
+          <article className="glass-card gradient-outline feature-lift rounded-2xl p-4">
+            <p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-600">💰 Avg Interest</p>
+            <p className="mt-2 text-2xl font-black text-slate-900">11.8%</p>
+            <p className="text-xs text-slate-600">Risk-adjusted pricing</p>
+          </article>
+          <article className="glass-card gradient-outline feature-lift rounded-2xl p-4">
+            <p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-600">🏷 Risk Category</p>
+            <p className="mt-2 text-2xl font-black text-slate-900">Dynamic</p>
+            <p className="text-xs text-emerald-700">Green/Yellow/Red coding</p>
+          </article>
+        </section>
+
         <div className="flex justify-end">
           <button
             type="button"
             onClick={loadDashboard}
             disabled={loading}
-            className="rounded-xl bg-sky-600 px-4 py-2 text-sm font-semibold text-white hover:bg-sky-500 disabled:cursor-not-allowed disabled:bg-sky-300"
+            className="rounded-xl bg-gradient-to-r from-blue-600 to-purple-600 px-4 py-2 text-sm font-semibold text-white shadow-md transition hover:scale-[1.03] disabled:cursor-not-allowed disabled:opacity-70"
           >
             {loading ? 'Refreshing...' : 'Refresh Dashboard'}
           </button>

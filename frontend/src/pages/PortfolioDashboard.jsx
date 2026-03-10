@@ -50,22 +50,45 @@ export default function PortfolioDashboard() {
   }, [])
 
   return (
-    <main className="min-h-screen bg-[radial-gradient(circle_at_top_left,#fee2e2,#f8fafc_35%,#fef3c7_90%)] px-4 py-8">
+    <main className="min-h-screen px-4 py-8 sm:px-6 lg:px-8">
       <div className="mx-auto max-w-6xl space-y-6">
-        <header className="rounded-3xl bg-slate-900 p-6 text-white shadow-xl">
-          <p className="text-xs uppercase tracking-[0.2em] text-rose-200">Intelli-Credit</p>
+        <header className="rounded-3xl border border-white/40 bg-gradient-to-r from-purple-700 via-blue-700 to-emerald-500 p-6 text-white shadow-2xl shadow-purple-900/20">
+          <p className="text-xs uppercase tracking-[0.2em] text-purple-100">Intelli-Credit</p>
           <h1 className="mt-2 text-3xl font-black tracking-tight md:text-4xl">Portfolio Risk Monitoring</h1>
           <p className="mt-3 max-w-2xl text-sm text-slate-200 md:text-base">
             Portfolio-level risk view across all analyzed companies, including exposure and alert signals.
           </p>
         </header>
 
+        <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <article className="glass-card gradient-outline feature-lift rounded-2xl p-4">
+            <p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-600">📉 Portfolio Risk</p>
+            <p className="mt-2 text-2xl font-black text-slate-900">Balanced</p>
+            <p className="text-xs text-amber-700">Monitor medium-risk cluster</p>
+          </article>
+          <article className="glass-card gradient-outline feature-lift rounded-2xl p-4">
+            <p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-600">💸 Loan Exposure</p>
+            <p className="mt-2 text-2xl font-black text-slate-900">Live</p>
+            <p className="text-xs text-slate-600">Auto-refresh every 15s</p>
+          </article>
+          <article className="glass-card gradient-outline feature-lift rounded-2xl p-4">
+            <p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-600">🧭 Category Tracking</p>
+            <p className="mt-2 text-2xl font-black text-slate-900">Green / Yellow / Red</p>
+            <p className="text-xs text-emerald-700">Policy aligned</p>
+          </article>
+          <article className="glass-card gradient-outline feature-lift rounded-2xl p-4">
+            <p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-600">🔔 Alert Engine</p>
+            <p className="mt-2 text-2xl font-black text-slate-900">Real-time</p>
+            <p className="text-xs text-purple-700">Risk triggers surfaced instantly</p>
+          </article>
+        </section>
+
         <div className="flex justify-end">
           <button
             type="button"
             onClick={loadPortfolio}
             disabled={loading}
-            className="rounded-xl bg-rose-600 px-4 py-2 text-sm font-semibold text-white hover:bg-rose-500 disabled:cursor-not-allowed disabled:bg-rose-300"
+            className="rounded-xl bg-gradient-to-r from-purple-600 to-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-md transition hover:scale-[1.03] disabled:cursor-not-allowed disabled:opacity-70"
           >
             {loading ? 'Refreshing...' : 'Refresh Portfolio'}
           </button>
@@ -75,7 +98,7 @@ export default function PortfolioDashboard() {
 
         <section
           className={`rounded-2xl p-4 ring-1 ${
-            alerts.length > 0 ? 'bg-rose-50 ring-rose-200' : 'bg-emerald-50 ring-emerald-200'
+            alerts.length > 0 ? 'glass-card bg-rose-50 ring-rose-200' : 'glass-card bg-emerald-50 ring-emerald-200'
           }`}
         >
           <h3

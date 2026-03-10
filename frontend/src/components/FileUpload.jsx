@@ -19,18 +19,21 @@ export default function FileUpload({ files, onFilesSelected, onUpload, isUploadi
 
   const dropzoneClasses = useMemo(() => {
     const base =
-      'rounded-2xl border-2 border-dashed p-8 transition-all duration-200 cursor-pointer bg-white/60 backdrop-blur-sm shadow-sm'
+      'rounded-2xl border-2 border-dashed p-8 transition-all duration-300 cursor-pointer bg-white/70 backdrop-blur-sm shadow-sm feature-lift'
     return isDragActive
-      ? `${base} border-amber-500 bg-amber-50`
-      : `${base} border-slate-300 hover:border-emerald-500 hover:bg-emerald-50`
+      ? `${base} border-purple-500 bg-purple-50`
+      : `${base} border-slate-300 hover:border-emerald-500 hover:bg-emerald-50/80`
   }, [isDragActive])
 
   return (
     <div className="space-y-4">
       <div {...getRootProps()} className={dropzoneClasses}>
         <input {...getInputProps()} />
-        <p className="text-lg font-semibold text-slate-800">Drop GST/Bank CSVs and PDF reports here</p>
-        <p className="mt-2 text-sm text-slate-600">or click to select multiple files</p>
+        <p className="text-lg font-semibold text-slate-800">Drop GST/Bank CSVs and PDF reports here 📄</p>
+        <p className="mt-2 text-sm text-slate-600">or click to select multiple files for AI analysis</p>
+        <p className="mt-3 text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">
+          {isDragActive ? 'Release to upload into pipeline' : 'Supported: CSV and PDF'}
+        </p>
       </div>
 
       {fileRejections.length > 0 && (
@@ -53,14 +56,19 @@ export default function FileUpload({ files, onFilesSelected, onUpload, isUploadi
         </div>
       )}
 
-      <button
-        type="button"
-        onClick={onUpload}
-        disabled={!hasFiles || isUploading || isProcessing}
-        className="inline-flex items-center rounded-xl bg-slate-900 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:bg-slate-400"
-      >
-        {isUploading ? 'Uploading files...' : isProcessing ? 'Processing...' : 'Upload and Analyze'}
-      </button>
+      <div className="flex flex-wrap items-center gap-3">
+        <button
+          type="button"
+          onClick={onUpload}
+          disabled={!hasFiles || isUploading || isProcessing}
+          className="inline-flex items-center rounded-xl bg-gradient-to-r from-blue-600 via-purple-600 to-emerald-500 px-5 py-2.5 text-sm font-semibold text-white transition hover:scale-[1.03] disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          {isUploading ? 'Uploading files...' : isProcessing ? 'Processing...' : 'Upload and Analyze'}
+        </button>
+        {(isUploading || isProcessing) && (
+          <span className="text-sm font-medium text-slate-600">AI processing in progress...</span>
+        )}
+      </div>
     </div>
   )
 }

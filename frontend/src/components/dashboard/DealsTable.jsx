@@ -12,7 +12,7 @@ function statusBadgeClass(status) {
 
 export default function DealsTable({ deals }) {
   return (
-    <section className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-slate-200">
+    <section className="glass-card gradient-outline rounded-2xl p-4 shadow-sm ring-1 ring-slate-200">
       <div className="flex items-center justify-between gap-3">
         <h3 className="text-sm font-bold uppercase tracking-[0.12em] text-slate-700">Analyzed Deals</h3>
         <span className="text-xs text-slate-500">{deals.length} records</span>
@@ -33,7 +33,7 @@ export default function DealsTable({ deals }) {
           <tbody className="divide-y divide-slate-100">
             {deals.length > 0 ? (
               deals.map((deal) => (
-                <tr key={`${deal.company_name}-${deal.timestamp}`}>
+                <tr key={`${deal.company_name}-${deal.timestamp}`} className="transition hover:bg-blue-50/50">
                   <td className="px-4 py-3 text-slate-800">{deal.company_name || 'Unknown Company'}</td>
                   <td className="px-4 py-3 text-slate-700">{Math.round((deal.risk_score || 0) * 100)}%</td>
                   <td className="px-4 py-3">
