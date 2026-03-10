@@ -71,10 +71,22 @@ export async function onboardEntity(entityData) {
   })
 }
 
-export async function uploadFiles(files, entityId) {
+export async function classifyDocuments(files, entityId) {
   const formData = new FormData()
   files.forEach((file) => formData.append('files', file))
   formData.append('entity_id', entityId || '')
+
+  return requestJson('/classify-documents', {
+    method: 'POST',
+    body: formData,
+  })
+}
+
+export async function uploadFiles(files, entityId, classifications = []) {
+  const formData = new FormData()
+  files.forEach((file) => formData.append('files', file))
+  formData.append('entity_id', entityId || '')
+  formData.append('classifications', JSON.stringify(classifications || []))
 
   return requestJson('/upload', {
     method: 'POST',

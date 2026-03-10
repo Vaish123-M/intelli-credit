@@ -9,7 +9,7 @@ import FileUpload from '../components/FileUpload'
 import ResearchDashboard from '../components/ResearchDashboard'
 import brandMark from '../assets/intelli-credit-mark.svg'
 import useRevealOnScroll from '../hooks/useRevealOnScroll'
-import { generateCamReport, getApiBaseUrl, getResults, onboardEntity, runAnalysis, runResearch, runRiskScore, uploadFiles } from '../services/api'
+import { classifyDocuments, generateCamReport, getApiBaseUrl, getResults, onboardEntity, runAnalysis, runResearch, runRiskScore, uploadFiles } from '../services/api'
 
 const FEATURE_CARDS = [
   { icon: '📄', title: 'Document Upload', description: 'Upload GST, bank statements, and financial reports in one secure flow.' },
@@ -69,7 +69,9 @@ export default function Home() {
   const [companyName, setCompanyName] = useState('')
   const [promoterName, setPromoterName] = useState('')
   const [entityId, setEntityId] = useState('')
+  const [classifications, setClassifications] = useState([])
   const [isUploading, setIsUploading] = useState(false)
+  const [isClassifying, setIsClassifying] = useState(false)
   const [isProcessing, setIsProcessing] = useState(false)
   const [isResearching, setIsResearching] = useState(false)
   const [isScoring, setIsScoring] = useState(false)
@@ -78,13 +80,61 @@ export default function Home() {
   const [success, setSuccess] = useState('')
 
   const statusLabel = useMemo(() => {
+    if (isClassifying) return 'Classifying uploaded documents by type...'
     if (isUploading) return 'Uploading files to backend...'
     if (isProcessing) return 'Running extraction and financial analysis...'
     if (isResearching) return 'Running external research agent...'
     if (isScoring) return 'Running AI credit risk model...'
     if (isGeneratingCam) return 'Generating credit approval memo report...'
     return ''
-  }, [isUploading, isProcessing, isResearching, isScoring, isGeneratingCam])
+  }, [isClassifying, isUploading, isProcessing, isResearching, isScoring, isGeneratingCam])
+
+  const handleFilesSelected = (files) => {
+    setSelectedFiles(files)
+    setClassifications([])
+  }
+
+  const handleClassify = async () => {
+    if (!entityId) {
+      setError('Please complete entity onboarding before classifying documents.')
+      return
+    }
+    if (!selectedFiles.length) {
+      setError('Select files before classification.')
+      return
+    }
+
+    setError('')
+    setSuccess('')
+    setIsClassifying(true)
+
+    try {
+      const result = await classifyDocuments(selectedFiles, entityId)
+      const nextClassifications = (result.results || []).map((item) => ({
+        file_name: item.file_name,
+        predicted_type: item.predicted_type,
+        detected_type: item.predicted_type,
+        confidence: item.confidence,
+        approved: false,
+      }))
+      setClassifications(nextClassifications)
+      setSuccess('Document classification completed. Review and approve before upload.')
+    } catch (classificationError) {
+      setError(classificationError.message || 'Document classification failed')
+    } finally {
+      setIsClassifying(false)
+    }
+  }
+
+  const handleClassificationEdit = (fileName, detectedType) => {
+    setClassifications((prev) =>
+      prev.map((item) => (item.file_name === fileName ? { ...item, detected_type: detectedType, approved: false } : item))
+    )
+  }
+
+  const handleClassificationApproval = (fileName, approved) => {
+    setClassifications((prev) => prev.map((item) => (item.file_name === fileName ? { ...item, approved } : item)))
+  }
 
   const handleGenerateCam = async () => {
     const finalCompanyName = companyName.trim() || 'Intelli Credit Applicant'
@@ -187,13 +237,18 @@ export default function Home() {
       return
     }
 
+    if (classifications.length !== selectedFiles.length || classifications.some((item) => !item.approved)) {
+      setError('Classify and approve all uploaded files before upload.')
+      return
+    }
+
     setError('')
     setSuccess('')
     setIsUploading(true)
     setIsProcessing(true)
 
     try {
-      const uploadResult = await uploadFiles(selectedFiles, entityId)
+      const uploadResult = await uploadFiles(selectedFiles, entityId, classifications)
       setUploadedFiles(uploadResult.uploaded_files || [])
       setExtractedData(uploadResult.extracted_data || [])
       setAnalysis(uploadResult.analysis || null)
@@ -399,9 +454,14 @@ export default function Home() {
           <div className="mt-5">
             <FileUpload
               files={selectedFiles}
-              onFilesSelected={setSelectedFiles}
+              onFilesSelected={handleFilesSelected}
+              onClassify={handleClassify}
+              classifications={classifications}
+              onClassificationChange={handleClassificationEdit}
+              onClassificationApproval={handleClassificationApproval}
               onUpload={handleUpload}
               isUploading={isUploading}
+              isClassifying={isClassifying}
               isProcessing={!entityId || isProcessing || isResearching || isScoring || isGeneratingCam}
             />
           </div>
@@ -434,11 +494,13 @@ export default function Home() {
           </div>
 
           {statusLabel && <p className="mt-4 text-sm font-medium text-emerald-700">AI analyzing financial data... 🤖 {statusLabel}</p>}
-          {(isProcessing || isResearching || isScoring || isGeneratingCam) && (
+          {(isClassifying || isProcessing || isResearching || isScoring || isGeneratingCam) && (
             <div className="mt-3 space-y-2 text-sm text-slate-700">
               <AILoader
                 label={
-                  isGeneratingCam
+                  isClassifying
+                    ? 'Reading file names, keywords, and table patterns for document classification...'
+                    : isGeneratingCam
                     ? 'Formatting 5C report and rendering CAM PDF...'
                     : isScoring
                     ? 'Scoring AI credit risk and generating decision recommendations...'
