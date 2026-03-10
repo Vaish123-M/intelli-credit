@@ -16,6 +16,7 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 from pypdf import PdfReader
 
+from app.services.ml import build_credit_recommendation
 from app.services.research import run_secondary_research
 
 APP_ROOT = Path(__file__).resolve().parent.parent
@@ -1001,14 +1002,23 @@ def risk_score(payload: RiskScoreRequest) -> dict[str, Any]:
     if not factors:
         factors = ["No major adverse signals"]
 
+    recommendation = build_credit_recommendation(
+        financial_metrics=analysis,
+        risk_score=risk,
+        secondary_research_signals=intelligence,
+    )
+    loan_decision = str(recommendation.get("decision") or "Review")
+
     decision = {
         "company_name": payload.company_name,
         "risk_score": round(risk, 4),
         "risk_category": risk_category,
-        "loan_limit": loan_limit,
-        "interest_rate": interest_rate,
+        "loan_limit": recommendation.get("recommended_loan_limit", loan_limit),
+        "interest_rate": recommendation.get("recommended_interest_rate", interest_rate),
+        "loan_decision": loan_decision,
+        "reasoning": recommendation.get("reasoning", []),
         "top_risk_factors": factors,
-        "decision_status": "Approved" if risk_category == "Low Risk" else ("Review Required" if risk_category == "Medium Risk" else "Rejected"),
+        "decision_status": "Approved" if loan_decision == "Approve" else ("Review Required" if loan_decision == "Review" else "Rejected"),
         "timestamp": datetime.utcnow().isoformat() + "Z",
     }
     state["decision"] = decision
