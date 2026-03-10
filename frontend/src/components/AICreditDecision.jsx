@@ -29,10 +29,10 @@ export default function AICreditDecision({ decision, onGenerateCam, isGenerating
   const tone = riskTone(decision.risk_category)
 
   return (
-    <section className="mt-8 space-y-4 rounded-2xl bg-slate-50 p-5 ring-1 ring-slate-200">
+    <section className="glass-card gradient-outline mt-8 space-y-4 rounded-2xl p-5">
       <div className="flex items-center justify-between gap-3">
         <h3 className="text-sm font-bold uppercase tracking-[0.12em] text-slate-700">AI Credit Decision</h3>
-        <span className="rounded-full bg-slate-900 px-3 py-1 text-xs font-semibold text-white">ML Risk Engine</span>
+        <span className="rounded-full bg-gradient-to-r from-purple-600 to-blue-600 px-3 py-1 text-xs font-semibold text-white">ML Risk Engine 🤖</span>
       </div>
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
@@ -47,7 +47,7 @@ export default function AICreditDecision({ decision, onGenerateCam, isGenerating
           type="button"
           onClick={onGenerateCam}
           disabled={!canGenerateCam || isGeneratingCam}
-          className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-700 disabled:cursor-not-allowed disabled:bg-slate-400"
+          className="rounded-xl bg-gradient-to-r from-blue-600 via-purple-600 to-emerald-500 px-4 py-2 text-sm font-semibold text-white shadow-md transition hover:scale-[1.03] disabled:cursor-not-allowed disabled:opacity-70"
         >
           {isGeneratingCam ? 'Generating CAM PDF...' : 'Download CAM Report'}
         </button>

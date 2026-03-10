@@ -26,10 +26,10 @@ export default function ResearchDashboard({ intelligence }) {
   const hasErrors = intelligence.errors && intelligence.errors.length > 0
 
   return (
-    <section className="mt-8 space-y-4 rounded-2xl bg-slate-50 p-5 ring-1 ring-slate-200">
+    <section className="glass-card gradient-outline mt-8 space-y-4 rounded-2xl p-5">
       <div className="flex items-center justify-between gap-3">
         <h3 className="text-sm font-bold uppercase tracking-[0.12em] text-slate-700">External Intelligence</h3>
-        <span className="rounded-full bg-slate-900 px-3 py-1 text-xs font-semibold text-white">Research Agent</span>
+        <span className="rounded-full bg-gradient-to-r from-emerald-500 to-blue-600 px-3 py-1 text-xs font-semibold text-white">Research Agent 🌐</span>
       </div>
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">

@@ -7,7 +7,7 @@ function formatLoanLimit(value) {
 
 export default function HighRiskTable({ records }) {
   return (
-    <section className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-slate-200">
+    <section className="glass-card gradient-outline rounded-2xl p-4 shadow-sm ring-1 ring-slate-200">
       <div className="flex items-center justify-between gap-3">
         <h3 className="text-sm font-bold uppercase tracking-[0.12em] text-slate-700">High Risk Companies</h3>
         <span className="text-xs text-slate-500">{records.length} records</span>
@@ -26,7 +26,7 @@ export default function HighRiskTable({ records }) {
           <tbody className="divide-y divide-slate-100">
             {records.length > 0 ? (
               records.map((record) => (
-                <tr key={`${record.company_name}-${record.timestamp}`}>
+                <tr key={`${record.company_name}-${record.timestamp}`} className="transition hover:bg-rose-50/40">
                   <td className="px-4 py-3 text-slate-800">{record.company_name || 'Unknown Company'}</td>
                   <td className="px-4 py-3 text-slate-700">{Math.round((record.risk_score || 0) * 100)}%</td>
                   <td className="px-4 py-3 text-slate-700">{formatLoanLimit(record.loan_limit)}</td>

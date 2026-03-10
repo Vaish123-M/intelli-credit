@@ -1,10 +1,55 @@
 import { useMemo, useState } from 'react'
+import { motion } from 'framer-motion'
 
+import AILoader from '../components/AILoader'
 import AICreditDecision from '../components/AICreditDecision'
 import Dashboard from '../components/Dashboard'
 import FileUpload from '../components/FileUpload'
 import ResearchDashboard from '../components/ResearchDashboard'
+import aiFinanceIllustration from '../assets/ai-finance-illustration.svg'
+import brandMark from '../assets/intelli-credit-mark.svg'
+import useRevealOnScroll from '../hooks/useRevealOnScroll'
 import { generateCamReport, getApiBaseUrl, getResults, runAnalysis, runResearch, runRiskScore, uploadFiles } from '../services/api'
+
+const FEATURE_CARDS = [
+  { icon: '📄', title: 'Document Upload', description: 'Upload GST, bank statements, and financial reports in one secure flow.' },
+  { icon: '📊', title: 'Financial Analysis', description: 'Extract key financial signals like leverage, cashflow, and margin trends.' },
+  { icon: '🌐', title: 'External Intelligence', description: 'Run litigation, sentiment, sector, and promoter checks automatically.' },
+  { icon: '🤖', title: 'AI Risk Scoring', description: 'Generate explainable risk score, category, and lending recommendation.' },
+  { icon: '📝', title: 'Credit Report Generation', description: 'Produce downloadable CAM report with rationale and risk narrative.' },
+  { icon: '📈', title: 'Portfolio Monitoring', description: 'Track aggregate risk mix and identify high-risk exposure in real time.' },
+]
+
+function RevealSection({ children, className = '', delay = 0 }) {
+  const { ref, controls } = useRevealOnScroll()
+
+  return (
+    <motion.section
+      ref={ref}
+      className={className}
+      variants={{
+        hidden: { opacity: 0, y: 28 },
+        visible: { opacity: 1, y: 0 },
+      }}
+      initial="hidden"
+      animate={controls}
+      transition={{ duration: 0.55, ease: 'easeOut', delay }}
+    >
+      {children}
+    </motion.section>
+  )
+}
+
+function AnimatedStat({ value, label }) {
+  return (
+    <div className="glass-card rounded-2xl p-4 text-center">
+      <p className="animated-gradient bg-gradient-to-r from-blue-600 via-purple-600 to-emerald-500 bg-clip-text text-2xl font-black text-transparent md:text-3xl">
+        {value}
+      </p>
+      <p className="mt-1 text-xs font-semibold uppercase tracking-[0.13em] text-slate-600">{label}</p>
+    </div>
+  )
+}
 
 export default function Home() {
   const [selectedFiles, setSelectedFiles] = useState([])
@@ -191,28 +236,113 @@ export default function Home() {
   }
 
   return (
-    <main className="min-h-screen bg-[radial-gradient(circle_at_top_left,#dcfce7,#f8fafc_35%,#fef3c7_90%)] px-4 py-8">
-      <div className="mx-auto max-w-6xl">
-        <header className="rounded-3xl bg-slate-900 p-6 text-white shadow-xl">
-          <p className="text-xs uppercase tracking-[0.2em] text-emerald-200">Intelli-Credit</p>
-          <h1 className="mt-2 text-3xl font-black tracking-tight md:text-4xl">
-            AI Corporate Credit Decision Engine
-          </h1>
-          <p className="mt-3 max-w-2xl text-sm text-slate-200 md:text-base">
-            Milestone 1: File Upload, Data Extraction, and Basic Financial Analysis for GST, bank statements,
-            annual reports, and financial statements.
-          </p>
-        </header>
+    <main className="min-h-screen px-4 py-8 sm:px-6 lg:px-8">
+      <div className="mx-auto max-w-7xl space-y-8">
+        <RevealSection className="relative overflow-hidden rounded-3xl border border-white/50 p-6 sm:p-8 lg:p-10 animated-gradient bg-gradient-to-br from-blue-600/95 via-purple-600/95 to-emerald-500/90 text-white shadow-2xl shadow-blue-700/25">
+          <div className="absolute -right-24 -top-24 h-56 w-56 rounded-full bg-white/10" />
+          <div className="absolute -bottom-24 left-16 h-56 w-56 rounded-full bg-emerald-100/20" />
 
-        <section className="mt-6 rounded-2xl bg-white/70 p-6 shadow-lg backdrop-blur-sm ring-1 ring-slate-200">
+          <div className="relative z-10 grid items-center gap-6 lg:grid-cols-[1.15fr,1fr]">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.26em] text-blue-100">🏦 Intelli-Credit Platform</p>
+              <h2 className="mt-3 text-3xl font-extrabold leading-tight sm:text-4xl lg:text-5xl">
+                AI-Powered Corporate Credit Risk Intelligence
+              </h2>
+              <p className="mt-4 max-w-2xl text-sm text-blue-50 sm:text-base">
+                Upload financial documents and instantly receive an AI-driven credit decision with explainable risk insights.
+                Built for modern underwriting teams that need speed, control, and confidence.
+              </p>
+
+              <div className="mt-6 grid gap-3 sm:grid-cols-3">
+                <AnimatedStat value="10x faster" label="Credit analysis" />
+                <AnimatedStat value="AI-driven" label="Risk insights" />
+                <AnimatedStat value="Auto CAM" label="Report generation" />
+              </div>
+            </div>
+
+            <div className="rounded-3xl border border-white/40 bg-white/10 p-4 backdrop-blur-md">
+              <motion.img
+                src={aiFinanceIllustration}
+                alt="AI analyzing corporate financial charts"
+                className="h-56 w-full max-w-xl"
+                animate={{ y: [0, -6, 0] }}
+                transition={{ duration: 4, repeat: Infinity, ease: 'easeInOut' }}
+              />
+              <p className="mt-2 text-center text-xs font-semibold uppercase tracking-[0.13em] text-blue-100">
+                🤖 AI Engine analyzing corporate financial charts 📈
+              </p>
+            </div>
+          </div>
+        </RevealSection>
+
+        <RevealSection className="grid gap-5 lg:grid-cols-2" delay={0.05}>
+          <article className="glass-card gradient-outline feature-lift rounded-3xl p-6">
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-blue-700">Problem Overview</p>
+            <h3 className="mt-2 text-2xl font-extrabold text-slate-900">Manual credit review is slow and inconsistent 📊</h3>
+            <p className="mt-3 text-sm leading-relaxed text-slate-700">
+              Corporate lending decisions rely on scattered data, delayed external checks, and subjective interpretation.
+              This increases turnaround time and hidden risk across portfolios.
+            </p>
+          </article>
+
+          <article className="glass-card gradient-outline feature-lift rounded-3xl p-6">
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-700">Solution</p>
+            <h3 className="mt-2 text-2xl font-extrabold text-slate-900">Unified AI underwriting workflow 💼</h3>
+            <p className="mt-3 text-sm leading-relaxed text-slate-700">
+              Intelli-Credit combines document extraction, financial diagnostics, external intelligence, and AI risk scoring
+              into one guided workflow designed for corporate credit analysts.
+            </p>
+          </article>
+        </RevealSection>
+
+        <RevealSection className="space-y-4" delay={0.08}>
+          <div className="flex flex-wrap items-end justify-between gap-2">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-purple-700">Key Features</p>
+              <h3 className="text-2xl font-extrabold text-slate-900">Fintech + AI capabilities for decision teams</h3>
+            </div>
+          </div>
+
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+            {FEATURE_CARDS.map((feature) => (
+              <motion.article
+                key={feature.title}
+                className="glass-card gradient-outline feature-lift rounded-2xl p-5"
+                initial={{ opacity: 0, y: 18 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true, margin: '-10% 0px' }}
+                transition={{ duration: 0.35 }}
+              >
+                <p className="text-2xl">{feature.icon}</p>
+                <h4 className="mt-2 text-lg font-bold text-slate-900">{feature.title}</h4>
+                <p className="mt-2 text-sm text-slate-700">{feature.description}</p>
+              </motion.article>
+            ))}
+          </div>
+        </RevealSection>
+
+        <RevealSection className="glass-card rounded-3xl p-6" delay={0.1}>
+          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-sky-700">Demo Workflow</p>
+          <h3 className="mt-2 text-2xl font-extrabold text-slate-900">From upload to decision in minutes</h3>
+          <ol className="mt-4 grid gap-3 text-sm text-slate-700 md:grid-cols-5">
+            <li className="rounded-xl bg-white/70 p-3 ring-1 ring-slate-200">1. Upload docs 📄</li>
+            <li className="rounded-xl bg-white/70 p-3 ring-1 ring-slate-200">2. Extract & analyze 📊</li>
+            <li className="rounded-xl bg-white/70 p-3 ring-1 ring-slate-200">3. Research intelligence 🌐</li>
+            <li className="rounded-xl bg-white/70 p-3 ring-1 ring-slate-200">4. AI risk scoring 🤖</li>
+            <li className="rounded-xl bg-white/70 p-3 ring-1 ring-slate-200">5. Generate CAM report 📝</li>
+          </ol>
+        </RevealSection>
+
+        <RevealSection className="glass-card rounded-3xl p-6 shadow-lg ring-1 ring-white/60" delay={0.12}>
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <h2 className="text-xl font-bold text-slate-900">Upload and Process Documents</h2>
+            <h2 className="text-xl font-bold text-slate-900">Underwriting Studio</h2>
+            <img src={brandMark} alt="Intelli-Credit logo" className="h-9 w-auto" />
             <div className="flex gap-2">
               <button
                 type="button"
                 onClick={handleAnalyze}
                 disabled={isUploading || isProcessing}
-                className="rounded-xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-500 disabled:cursor-not-allowed disabled:bg-emerald-300"
+                className="rounded-xl bg-gradient-to-r from-emerald-500 to-emerald-600 px-4 py-2 text-sm font-semibold text-white shadow-md transition hover:scale-[1.03] disabled:cursor-not-allowed disabled:opacity-70"
               >
                 Re-run Analysis
               </button>
@@ -220,7 +350,7 @@ export default function Home() {
                 type="button"
                 onClick={handleLoadResults}
                 disabled={isUploading || isProcessing}
-                className="rounded-xl bg-amber-500 px-4 py-2 text-sm font-semibold text-slate-900 hover:bg-amber-400 disabled:cursor-not-allowed disabled:bg-amber-200"
+                className="rounded-xl bg-gradient-to-r from-blue-500 to-purple-600 px-4 py-2 text-sm font-semibold text-white shadow-md transition hover:scale-[1.03] disabled:cursor-not-allowed disabled:opacity-70"
               >
                 Load Latest Results
               </button>
@@ -256,23 +386,26 @@ export default function Home() {
               type="button"
               onClick={() => handleResearch()}
               disabled={isUploading || isProcessing || isResearching || isScoring || isGeneratingCam}
-              className="rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-indigo-500 disabled:cursor-not-allowed disabled:bg-indigo-300"
+              className="rounded-xl bg-gradient-to-r from-purple-600 to-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-md transition hover:scale-[1.03] disabled:cursor-not-allowed disabled:opacity-70"
             >
               {isResearching ? 'Researching...' : 'Run Research Agent'}
             </button>
           </div>
 
-          {statusLabel && <p className="mt-4 text-sm font-medium text-emerald-700">{statusLabel}</p>}
+          {statusLabel && <p className="mt-4 text-sm font-medium text-emerald-700">AI analyzing financial data... 🤖 {statusLabel}</p>}
           {(isProcessing || isResearching || isScoring || isGeneratingCam) && (
-            <div className="mt-3 flex items-center gap-2 text-sm text-slate-700">
-              <span className="inline-block h-3 w-3 animate-pulse rounded-full bg-emerald-500" />
-              {isGeneratingCam
-                ? 'Formatting 5C report and rendering CAM PDF...'
-                : isScoring
-                ? 'Scoring AI credit risk and generating decision recommendations...'
-                : isResearching
-                ? 'Gathering external intelligence, litigation, sector risk, and sentiment...'
-                : 'Processing documents and generating credit signals...'}
+            <div className="mt-3 space-y-2 text-sm text-slate-700">
+              <AILoader
+                label={
+                  isGeneratingCam
+                    ? 'Formatting 5C report and rendering CAM PDF...'
+                    : isScoring
+                    ? 'Scoring AI credit risk and generating decision recommendations...'
+                    : isResearching
+                    ? 'Gathering external intelligence, litigation, sector risk, and sentiment...'
+                    : 'Processing documents and generating credit signals...'
+                }
+              />
             </div>
           )}
           {error && <p className="mt-4 rounded-lg bg-rose-100 px-4 py-2 text-sm text-rose-700">{error}</p>}
@@ -296,7 +429,48 @@ export default function Home() {
           {!!extractedData.length && (
             <p className="mt-1 text-xs text-slate-500">Parsed documents: {extractedData.length}</p>
           )}
-        </section>
+        </RevealSection>
+
+        <RevealSection className="rounded-3xl border border-white/40 bg-gradient-to-r from-blue-600 via-purple-600 to-emerald-500 p-6 text-white shadow-2xl shadow-purple-800/25" delay={0.13}>
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-blue-100">Call to Action</p>
+              <h3 className="mt-1 text-2xl font-extrabold">Ready to transform credit decisioning?</h3>
+              <p className="mt-2 max-w-2xl text-sm text-blue-100">
+                Launch a complete AI-assisted underwriting demo with real financial data, explainable risk decisions, and portfolio intelligence.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={handleUpload}
+              disabled={!selectedFiles.length || isUploading || isProcessing}
+              className="rounded-xl bg-white px-5 py-2.5 text-sm font-bold text-slate-900 shadow-md transition hover:scale-[1.04] disabled:cursor-not-allowed disabled:opacity-70"
+            >
+              Start AI Analysis
+            </button>
+          </div>
+        </RevealSection>
+
+        <RevealSection className="glass-card rounded-3xl p-6" delay={0.14}>
+          <div className="grid gap-4 text-sm text-slate-700 md:grid-cols-4">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Project</p>
+              <p className="mt-2 font-semibold text-slate-900">Intelli-Credit</p>
+            </div>
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Repository</p>
+              <p className="mt-2 break-all">github.com/Vaish123-M/intelli-credit</p>
+            </div>
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Team</p>
+              <p className="mt-2">AL-ML Vivitri Hack IITH</p>
+            </div>
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Stack</p>
+              <p className="mt-2">React + Vite + TailwindCSS + FastAPI</p>
+            </div>
+          </div>
+        </RevealSection>
       </div>
     </main>
   )
