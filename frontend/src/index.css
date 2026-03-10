@@ -127,6 +127,85 @@ h4 {
 	animation: pulseMove 1.4s linear infinite;
 }
 
+.workflow-flowchart {
+	display: grid;
+	gap: 0.75rem;
+}
+
+.workflow-flowchart-item {
+	display: grid;
+	gap: 0.55rem;
+}
+
+.workflow-node {
+	border: 1px solid rgba(148, 163, 184, 0.35);
+	background: linear-gradient(160deg, rgba(255, 255, 255, 0.84), rgba(248, 250, 252, 0.7));
+	border-radius: 0.95rem;
+	padding: 0.85rem;
+	box-shadow: 0 10px 28px rgba(15, 23, 42, 0.08);
+}
+
+.workflow-node-id {
+	font-size: 0.66rem;
+	font-weight: 700;
+	text-transform: uppercase;
+	letter-spacing: 0.12em;
+	color: #1d4ed8;
+}
+
+.workflow-arrow {
+	display: flex;
+	justify-content: center;
+	align-items: center;
+	color: #2563eb;
+	font-weight: 800;
+	line-height: 1;
+	font-size: 1.1rem;
+	text-shadow: 0 6px 18px rgba(59, 130, 246, 0.25);
+}
+
+.workflow-arrow-right {
+	display: none;
+}
+
+.workflow-arrow-down {
+	display: inline;
+}
+
+@media (min-width: 960px) {
+	.workflow-flowchart {
+		display: flex;
+		align-items: stretch;
+		justify-content: space-between;
+		gap: 0.6rem;
+	}
+
+	.workflow-flowchart-item {
+		display: flex;
+		align-items: center;
+		gap: 0.55rem;
+		flex: 1;
+	}
+
+	.workflow-node {
+		min-height: 112px;
+		width: 100%;
+	}
+
+	.workflow-arrow {
+		font-size: 1.25rem;
+		padding-top: 0;
+	}
+
+	.workflow-arrow-right {
+		display: inline;
+	}
+
+	.workflow-arrow-down {
+		display: none;
+	}
+}
+
 @keyframes gradientShift {
 	0% {
 		background-position: 0% 50%;
