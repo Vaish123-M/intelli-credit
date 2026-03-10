@@ -4,11 +4,12 @@ import { motion } from 'framer-motion'
 import AILoader from '../components/AILoader'
 import AICreditDecision from '../components/AICreditDecision'
 import Dashboard from '../components/Dashboard'
+import EntityOnboarding from '../components/EntityOnboarding'
 import FileUpload from '../components/FileUpload'
 import ResearchDashboard from '../components/ResearchDashboard'
 import brandMark from '../assets/intelli-credit-mark.svg'
 import useRevealOnScroll from '../hooks/useRevealOnScroll'
-import { generateCamReport, getApiBaseUrl, getResults, runAnalysis, runResearch, runRiskScore, uploadFiles } from '../services/api'
+import { generateCamReport, getApiBaseUrl, getResults, onboardEntity, runAnalysis, runResearch, runRiskScore, uploadFiles } from '../services/api'
 
 const FEATURE_CARDS = [
   { icon: '📄', title: 'Document Upload', description: 'Upload GST, bank statements, and financial reports in one secure flow.' },
@@ -67,6 +68,7 @@ export default function Home() {
   const [decision, setDecision] = useState(null)
   const [companyName, setCompanyName] = useState('')
   const [promoterName, setPromoterName] = useState('')
+  const [entityId, setEntityId] = useState('')
   const [isUploading, setIsUploading] = useState(false)
   const [isProcessing, setIsProcessing] = useState(false)
   const [isResearching, setIsResearching] = useState(false)
@@ -175,6 +177,11 @@ export default function Home() {
   }
 
   const handleUpload = async () => {
+    if (!entityId) {
+      setError('Please complete entity onboarding before document upload.')
+      return
+    }
+
     if (!selectedFiles.length) {
       setError('Please select at least one file before uploading.')
       return
@@ -186,7 +193,7 @@ export default function Home() {
     setIsProcessing(true)
 
     try {
-      const uploadResult = await uploadFiles(selectedFiles)
+      const uploadResult = await uploadFiles(selectedFiles, entityId)
       setUploadedFiles(uploadResult.uploaded_files || [])
       setExtractedData(uploadResult.extracted_data || [])
       setAnalysis(uploadResult.analysis || null)
@@ -204,12 +211,17 @@ export default function Home() {
   }
 
   const handleAnalyze = async () => {
+    if (!entityId) {
+      setError('Please complete entity onboarding before analysis.')
+      return
+    }
+
     setError('')
     setSuccess('')
     setIsProcessing(true)
 
     try {
-      const analysisResult = await runAnalysis()
+      const analysisResult = await runAnalysis(entityId)
       setAnalysis(analysisResult.analysis || null)
       setDecision(null)
       if (analysisResult.extracted_data) {
@@ -224,12 +236,17 @@ export default function Home() {
   }
 
   const handleLoadResults = async () => {
+    if (!entityId) {
+      setError('Please complete entity onboarding before loading results.')
+      return
+    }
+
     setError('')
     setSuccess('')
     setIsProcessing(true)
 
     try {
-      const latestResults = await getResults()
+      const latestResults = await getResults(entityId)
       setUploadedFiles(latestResults.uploaded_files || [])
       setExtractedData(latestResults.extracted_data || [])
       setAnalysis(latestResults.analysis || null)
@@ -240,6 +257,17 @@ export default function Home() {
     } finally {
       setIsProcessing(false)
     }
+  }
+
+  const handleEntityOnboard = async (payload) => {
+    const response = await onboardEntity(payload)
+    setEntityId(response.entity_id || '')
+    if (payload.company_name && !companyName.trim()) {
+      setCompanyName(payload.company_name)
+    }
+    setError('')
+    setSuccess('Entity onboarding completed. Continue with document upload.')
+    return response
   }
 
   return (
@@ -348,7 +376,7 @@ export default function Home() {
               <button
                 type="button"
                 onClick={handleAnalyze}
-                disabled={isUploading || isProcessing}
+                disabled={!entityId || isUploading || isProcessing}
                 className="rounded-xl bg-gradient-to-r from-emerald-500 to-emerald-600 px-4 py-2 text-sm font-semibold text-white shadow-md transition hover:scale-[1.03] disabled:cursor-not-allowed disabled:opacity-70"
               >
                 Re-run Analysis
@@ -356,7 +384,7 @@ export default function Home() {
               <button
                 type="button"
                 onClick={handleLoadResults}
-                disabled={isUploading || isProcessing}
+                disabled={!entityId || isUploading || isProcessing}
                 className="rounded-xl bg-gradient-to-r from-blue-500 to-purple-600 px-4 py-2 text-sm font-semibold text-white shadow-md transition hover:scale-[1.03] disabled:cursor-not-allowed disabled:opacity-70"
               >
                 Load Latest Results
@@ -365,14 +393,20 @@ export default function Home() {
           </div>
 
           <div className="mt-5">
+            <EntityOnboarding onSubmit={handleEntityOnboard} onCompleted={() => {}} />
+          </div>
+
+          <div className="mt-5">
             <FileUpload
               files={selectedFiles}
               onFilesSelected={setSelectedFiles}
               onUpload={handleUpload}
               isUploading={isUploading}
-              isProcessing={isProcessing || isResearching || isScoring || isGeneratingCam}
+              isProcessing={!entityId || isProcessing || isResearching || isScoring || isGeneratingCam}
             />
           </div>
+
+          {entityId && <p className="mt-2 text-xs font-medium text-slate-600">Active Entity ID: {entityId}</p>}
 
           <div className="mt-5 grid gap-3 md:grid-cols-3">
             <input
@@ -392,7 +426,7 @@ export default function Home() {
             <button
               type="button"
               onClick={() => handleResearch()}
-              disabled={isUploading || isProcessing || isResearching || isScoring || isGeneratingCam}
+              disabled={!entityId || isUploading || isProcessing || isResearching || isScoring || isGeneratingCam}
               className="rounded-xl bg-gradient-to-r from-purple-600 to-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-md transition hover:scale-[1.03] disabled:cursor-not-allowed disabled:opacity-70"
             >
               {isResearching ? 'Researching...' : 'Run Research Agent'}
@@ -450,7 +484,7 @@ export default function Home() {
             <button
               type="button"
               onClick={handleUpload}
-              disabled={!selectedFiles.length || isUploading || isProcessing}
+              disabled={!entityId || !selectedFiles.length || isUploading || isProcessing}
               className="rounded-xl bg-white px-5 py-2.5 text-sm font-bold text-slate-900 shadow-md transition hover:scale-[1.04] disabled:cursor-not-allowed disabled:opacity-70"
             >
               Start AI Analysis

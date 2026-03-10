@@ -61,9 +61,20 @@ async function requestJson(path, options = {}) {
   throw lastError || new Error('Request failed')
 }
 
-export async function uploadFiles(files) {
+export async function onboardEntity(entityData) {
+  return requestJson('/entity-onboard', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(entityData || {}),
+  })
+}
+
+export async function uploadFiles(files, entityId) {
   const formData = new FormData()
   files.forEach((file) => formData.append('files', file))
+  formData.append('entity_id', entityId || '')
 
   return requestJson('/upload', {
     method: 'POST',
@@ -71,8 +82,9 @@ export async function uploadFiles(files) {
   })
 }
 
-export async function runAnalysis() {
-  const payload = await requestJson('/analyze', {
+export async function runAnalysis(entityId) {
+  const query = entityId ? `?entity_id=${encodeURIComponent(entityId)}` : ''
+  const payload = await requestJson(`/analyze${query}`, {
     method: 'POST',
   })
 
@@ -84,8 +96,9 @@ export async function runAnalysis() {
   return { analysis, extracted_data: extractedData || [] }
 }
 
-export async function getResults() {
-  return requestJson('/results')
+export async function getResults(entityId) {
+  const query = entityId ? `?entity_id=${encodeURIComponent(entityId)}` : ''
+  return requestJson(`/results${query}`)
 }
 
 export async function runResearch({ companyName, promoterName }) {

@@ -5,10 +5,11 @@ import re
 from datetime import datetime
 from pathlib import Path
 from typing import Any
+from uuid import uuid4
 
 import pandas as pd
 import pdfplumber
-from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
@@ -40,7 +41,21 @@ state: dict[str, Any] = {
     "research": None,
     "decision": None,
     "deals": [],
+    "entities": {},
+    "current_entity_id": None,
 }
+
+
+class EntityOnboardRequest(BaseModel):
+    company_name: str
+    cin: str
+    pan: str
+    sector: str
+    annual_turnover: float
+    loan_type: str
+    loan_amount: float
+    loan_tenure: str
+    interest_rate: float
 
 
 class ResearchRequest(BaseModel):
@@ -64,6 +79,23 @@ class CamRequest(BaseModel):
 class CopilotRequest(BaseModel):
     company_data: dict[str, Any] = Field(default_factory=dict)
     question: str = ""
+
+
+def _resolve_entity_id(entity_id: str | None = None) -> str | None:
+    requested = (entity_id or "").strip()
+    if requested:
+        return requested
+
+    current = state.get("current_entity_id")
+    return str(current).strip() if current else None
+
+
+def _get_entity_bucket(entity_id: str) -> dict[str, Any]:
+    entities = state.setdefault("entities", {})
+    entity_bucket = entities.get(entity_id)
+    if not entity_bucket:
+        raise HTTPException(status_code=404, detail="Invalid entity_id. Please onboard entity first.")
+    return entity_bucket
 
 
 def _extract_text(path: Path) -> str:
@@ -408,10 +440,46 @@ def root() -> dict[str, str]:
     return {"status": "ok", "service": "intelli-credit-api"}
 
 
+@app.post("/entity-onboard")
+def entity_onboard(payload: EntityOnboardRequest) -> dict[str, Any]:
+    entity_id = f"ent_{uuid4().hex[:12]}"
+    entity_record = {
+        "entity_id": entity_id,
+        "created_at": datetime.utcnow().isoformat() + "Z",
+        "company_name": payload.company_name,
+        "cin": payload.cin,
+        "pan": payload.pan,
+        "sector": payload.sector,
+        "annual_turnover": payload.annual_turnover,
+        "loan_type": payload.loan_type,
+        "loan_amount": payload.loan_amount,
+        "loan_tenure": payload.loan_tenure,
+        "interest_rate": payload.interest_rate,
+        "uploaded_files": [],
+        "extracted_data": [],
+        "analysis": None,
+    }
+
+    entities = state.setdefault("entities", {})
+    entities[entity_id] = entity_record
+    state["current_entity_id"] = entity_id
+
+    return {
+        "entity_id": entity_id,
+        "entity": entity_record,
+        "message": "Entity onboarded successfully.",
+    }
+
+
 @app.post("/upload")
-async def upload(files: list[UploadFile] = File(...)) -> dict[str, Any]:
+async def upload(entity_id: str = Form(...), files: list[UploadFile] = File(...)) -> dict[str, Any]:
     if not files:
         raise HTTPException(status_code=400, detail="No files provided")
+
+    resolved_entity_id = _resolve_entity_id(entity_id)
+    if not resolved_entity_id:
+        raise HTTPException(status_code=400, detail="entity_id is required. Please complete onboarding first.")
+    entity_bucket = _get_entity_bucket(resolved_entity_id)
 
     uploaded_files: list[dict[str, Any]] = []
     extracted_data: list[dict[str, Any]] = []
@@ -438,9 +506,17 @@ async def upload(files: list[UploadFile] = File(...)) -> dict[str, Any]:
         metrics = _merge_metrics(table_metrics, text_metrics)
         logger.debug("Metrics after merge (%s): %s", target.name, metrics)
 
-        uploaded_files.append({"filename": safe_name, "saved_path": str(target), "size_bytes": len(content)})
+        uploaded_files.append(
+            {
+                "entity_id": resolved_entity_id,
+                "filename": safe_name,
+                "saved_path": str(target),
+                "size_bytes": len(content),
+            }
+        )
         extracted_data.append(
             {
+                "entity_id": resolved_entity_id,
                 "filename": safe_name,
                 "char_count": len(parsed_text),
                 "detected_sections": ["balance_sheet", "pnl", "cashflow"],
@@ -452,21 +528,52 @@ async def upload(files: list[UploadFile] = File(...)) -> dict[str, Any]:
     state["uploaded_files"] = uploaded_files
     state["extracted_data"] = extracted_data
     state["analysis"] = analysis
+    state["current_entity_id"] = resolved_entity_id
 
-    return {"uploaded_files": uploaded_files, "extracted_data": extracted_data, "analysis": analysis}
+    entity_bucket["uploaded_files"] = uploaded_files
+    entity_bucket["extracted_data"] = extracted_data
+    entity_bucket["analysis"] = analysis
+
+    return {
+        "entity_id": resolved_entity_id,
+        "uploaded_files": uploaded_files,
+        "extracted_data": extracted_data,
+        "analysis": analysis,
+    }
 
 
 @app.post("/analyze")
-def analyze() -> dict[str, Any]:
-    extracted_data = state.get("extracted_data", [])
+def analyze(entity_id: str | None = None) -> dict[str, Any]:
+    resolved_entity_id = _resolve_entity_id(entity_id)
+    if resolved_entity_id:
+        entity_bucket = _get_entity_bucket(resolved_entity_id)
+        extracted_data = entity_bucket.get("extracted_data", [])
+    else:
+        extracted_data = state.get("extracted_data", [])
+
     analysis = _build_analysis(extracted_data)
     state["analysis"] = analysis
-    return {"analysis": analysis, "extracted_data": extracted_data}
+    if resolved_entity_id:
+        entity_bucket["analysis"] = analysis
+        state["current_entity_id"] = resolved_entity_id
+
+    return {"entity_id": resolved_entity_id, "analysis": analysis, "extracted_data": extracted_data}
 
 
 @app.get("/results")
-def results() -> dict[str, Any]:
+def results(entity_id: str | None = None) -> dict[str, Any]:
+    resolved_entity_id = _resolve_entity_id(entity_id)
+    if resolved_entity_id:
+        entity_bucket = _get_entity_bucket(resolved_entity_id)
+        return {
+            "entity_id": resolved_entity_id,
+            "uploaded_files": entity_bucket.get("uploaded_files", []),
+            "extracted_data": entity_bucket.get("extracted_data", []),
+            "analysis": entity_bucket.get("analysis"),
+        }
+
     return {
+        "entity_id": None,
         "uploaded_files": state.get("uploaded_files", []),
         "extracted_data": state.get("extracted_data", []),
         "analysis": state.get("analysis"),
