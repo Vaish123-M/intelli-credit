@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import json
 import re
 from datetime import datetime
 from pathlib import Path
@@ -44,6 +45,14 @@ state: dict[str, Any] = {
     "entities": {},
     "current_entity_id": None,
 }
+
+DOC_TYPES = [
+    "ALM (Asset Liability Management)",
+    "Shareholding Pattern",
+    "Borrowing Profile",
+    "Annual Report",
+    "Portfolio Cuts / Performance Data",
+]
 
 
 class EntityOnboardRequest(BaseModel):
@@ -96,6 +105,85 @@ def _get_entity_bucket(entity_id: str) -> dict[str, Any]:
     if not entity_bucket:
         raise HTTPException(status_code=404, detail="Invalid entity_id. Please onboard entity first.")
     return entity_bucket
+
+
+def _count_keyword_hits(text: str, keywords: list[str]) -> int:
+    lower_text = text.lower()
+    return sum(1 for keyword in keywords if keyword in lower_text)
+
+
+def _extract_table_headers_from_text(text: str) -> str:
+    lines = [ln.strip().lower() for ln in text.splitlines() if ln.strip()]
+    # Use first 20 lines as lightweight table/header signal.
+    return " \n".join(lines[:20])
+
+
+def _rule_based_document_classifier(file_name: str, text: str, table_metrics: dict[str, int]) -> dict[str, Any]:
+    name = file_name.lower()
+    content = (text or "").lower()
+    header_signal = _extract_table_headers_from_text(content)
+
+    scoring_rules = {
+        "ALM (Asset Liability Management)": {
+            "filename": ["alm", "asset_liability", "asset-liability", "maturity", "gap_statement"],
+            "keywords": ["asset liability", "maturity bucket", "repricing", "liquidity gap", "interest rate risk"],
+            "table": ["bucket", "1-7 days", "8-14 days", "liability", "asset"],
+        },
+        "Shareholding Pattern": {
+            "filename": ["shareholding", "share_holding", "cap_table", "equity_pattern"],
+            "keywords": ["shareholding", "promoter holding", "public holding", "equity shares", "voting rights"],
+            "table": ["shareholder", "holding %", "promoter", "public", "category"],
+        },
+        "Borrowing Profile": {
+            "filename": ["borrowing", "debt_profile", "loan_schedule", "facilities", "lender"],
+            "keywords": ["borrowing profile", "term loan", "working capital", "sanctioned limit", "outstanding debt"],
+            "table": ["facility", "lender", "sanctioned", "outstanding", "repayment"],
+        },
+        "Annual Report": {
+            "filename": ["annual", "annual_report", "ar_", "financial_statement", "directors_report"],
+            "keywords": ["annual report", "board of directors", "notes to accounts", "standalone financial statements", "auditor"],
+            "table": ["balance sheet", "statement of profit", "cash flow", "equity", "assets"],
+        },
+        "Portfolio Cuts / Performance Data": {
+            "filename": ["portfolio", "performance", "cuts", "vintage", "dpd", "delinquency"],
+            "keywords": ["portfolio", "performance data", "collection efficiency", "npa", "dpd", "vintage"],
+            "table": ["dpd", "vintage", "bucket", "roll rate", "delinquency"],
+        },
+    }
+
+    scores: dict[str, float] = {}
+    for doc_type, rule in scoring_rules.items():
+        file_hits = sum(1 for token in rule["filename"] if token in name)
+        keyword_hits = _count_keyword_hits(content, rule["keywords"])
+        table_hits = _count_keyword_hits(header_signal, rule["table"])
+
+        score = file_hits * 1.9 + keyword_hits * 1.4 + table_hits * 1.1
+
+        # Lightweight pattern boost from extracted financial table metrics.
+        if doc_type == "Annual Report" and any(table_metrics.get(metric) for metric in ["revenue", "ebitda", "debt", "equity"]):
+            score += 1.0
+        if doc_type == "Borrowing Profile" and table_metrics.get("debt"):
+            score += 0.8
+
+        scores[doc_type] = score
+
+    predicted_type = max(scores, key=scores.get)
+    sorted_scores = sorted(scores.values(), reverse=True)
+    top_score = sorted_scores[0]
+    second_score = sorted_scores[1] if len(sorted_scores) > 1 else 0.0
+
+    if top_score <= 0:
+        predicted_type = "Annual Report"
+        confidence = 0.5
+    else:
+        # Confidence increases when top score separates from second best.
+        confidence = min(0.98, 0.55 + (top_score - second_score) * 0.12 + min(top_score, 4.0) * 0.05)
+
+    return {
+        "file_name": file_name,
+        "predicted_type": predicted_type,
+        "confidence": round(float(confidence), 2),
+    }
 
 
 def _extract_text(path: Path) -> str:
@@ -458,6 +546,7 @@ def entity_onboard(payload: EntityOnboardRequest) -> dict[str, Any]:
         "uploaded_files": [],
         "extracted_data": [],
         "analysis": None,
+        "classifications": [],
     }
 
     entities = state.setdefault("entities", {})
@@ -471,8 +560,53 @@ def entity_onboard(payload: EntityOnboardRequest) -> dict[str, Any]:
     }
 
 
+@app.post("/classify-documents")
+async def classify_documents(entity_id: str = Form(...), files: list[UploadFile] = File(...)) -> dict[str, Any]:
+    if not files:
+        raise HTTPException(status_code=400, detail="No files provided")
+
+    resolved_entity_id = _resolve_entity_id(entity_id)
+    if not resolved_entity_id:
+        raise HTTPException(status_code=400, detail="entity_id is required. Please complete onboarding first.")
+
+    entity_bucket = _get_entity_bucket(resolved_entity_id)
+    results: list[dict[str, Any]] = []
+
+    for upload_file in files:
+        safe_name = upload_file.filename or f"upload_{datetime.utcnow().timestamp():.0f}.bin"
+        content = await upload_file.read()
+        temp_path = UPLOADS_DIR / f"tmp_{safe_name}"
+        temp_path.write_bytes(content)
+
+        try:
+            parsed_text = _extract_text(temp_path)
+            table_metrics: dict[str, int] = {}
+            if temp_path.suffix.lower() == ".pdf":
+                table_metrics = _extract_financials_from_pdf_tables(temp_path)
+            elif temp_path.suffix.lower() == ".csv":
+                table_metrics = _extract_financials_from_csv(temp_path)
+            else:
+                table_metrics = _extract_financials_from_text_table(parsed_text)
+
+            results.append(_rule_based_document_classifier(safe_name, parsed_text, table_metrics))
+        finally:
+            try:
+                temp_path.unlink(missing_ok=True)
+            except Exception:  # noqa: BLE001
+                logger.warning("Could not remove temp file %s", temp_path)
+
+    entity_bucket["classifications"] = results
+    state["current_entity_id"] = resolved_entity_id
+
+    return {
+        "entity_id": resolved_entity_id,
+        "results": results,
+        "supported_types": DOC_TYPES,
+    }
+
+
 @app.post("/upload")
-async def upload(entity_id: str = Form(...), files: list[UploadFile] = File(...)) -> dict[str, Any]:
+async def upload(entity_id: str = Form(...), files: list[UploadFile] = File(...), classifications: str | None = Form(None)) -> dict[str, Any]:
     if not files:
         raise HTTPException(status_code=400, detail="No files provided")
 
@@ -480,6 +614,17 @@ async def upload(entity_id: str = Form(...), files: list[UploadFile] = File(...)
     if not resolved_entity_id:
         raise HTTPException(status_code=400, detail="entity_id is required. Please complete onboarding first.")
     entity_bucket = _get_entity_bucket(resolved_entity_id)
+
+    parsed_classifications: list[dict[str, Any]] = []
+    if classifications:
+        try:
+            parsed = json.loads(classifications)
+            if isinstance(parsed, list):
+                parsed_classifications = [item for item in parsed if isinstance(item, dict)]
+        except json.JSONDecodeError as error:
+            raise HTTPException(status_code=400, detail=f"Invalid classifications payload: {error}") from error
+
+    class_map = {str(item.get("file_name", "")): item for item in parsed_classifications}
 
     uploaded_files: list[dict[str, Any]] = []
     extracted_data: list[dict[str, Any]] = []
@@ -506,12 +651,26 @@ async def upload(entity_id: str = Form(...), files: list[UploadFile] = File(...)
         metrics = _merge_metrics(table_metrics, text_metrics)
         logger.debug("Metrics after merge (%s): %s", target.name, metrics)
 
+        classifier_result = _rule_based_document_classifier(safe_name, parsed_text, table_metrics)
+        approved_result = class_map.get(safe_name) or class_map.get(upload_file.filename or "") or {}
+        final_type = str(approved_result.get("detected_type") or approved_result.get("predicted_type") or classifier_result["predicted_type"])
+        approval_status = bool(approved_result.get("approved", False))
+
+        classification_payload = {
+            "file_name": safe_name,
+            "predicted_type": classifier_result["predicted_type"],
+            "detected_type": final_type,
+            "confidence": float(approved_result.get("confidence", classifier_result["confidence"])),
+            "approved": approval_status,
+        }
+
         uploaded_files.append(
             {
                 "entity_id": resolved_entity_id,
                 "filename": safe_name,
                 "saved_path": str(target),
                 "size_bytes": len(content),
+                "classification": classification_payload,
             }
         )
         extracted_data.append(
@@ -521,6 +680,7 @@ async def upload(entity_id: str = Form(...), files: list[UploadFile] = File(...)
                 "char_count": len(parsed_text),
                 "detected_sections": ["balance_sheet", "pnl", "cashflow"],
                 "metrics": metrics,
+                "classification": classification_payload,
             }
         )
 
@@ -533,12 +693,14 @@ async def upload(entity_id: str = Form(...), files: list[UploadFile] = File(...)
     entity_bucket["uploaded_files"] = uploaded_files
     entity_bucket["extracted_data"] = extracted_data
     entity_bucket["analysis"] = analysis
+    entity_bucket["classifications"] = [item.get("classification", {}) for item in uploaded_files]
 
     return {
         "entity_id": resolved_entity_id,
         "uploaded_files": uploaded_files,
         "extracted_data": extracted_data,
         "analysis": analysis,
+        "classifications": entity_bucket["classifications"],
     }
 
 
