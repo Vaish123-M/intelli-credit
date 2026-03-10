@@ -54,6 +54,30 @@ DOC_TYPES = [
     "Portfolio Cuts / Performance Data",
 ]
 
+DEFAULT_SCHEMA_FIELDS: list[dict[str, str]] = [
+    {"key": "revenue", "label": "Revenue"},
+    {"key": "ebitda", "label": "EBITDA"},
+    {"key": "debt", "label": "Total Debt"},
+    {"key": "equity", "label": "Equity"},
+    {"key": "promoter_holding", "label": "Promoter Holding"},
+    {"key": "loan_exposure", "label": "Loan Exposure"},
+    {"key": "cashflow", "label": "Cashflow"},
+    {"key": "total_assets", "label": "Total Assets"},
+    {"key": "total_liabilities", "label": "Total Liabilities"},
+]
+
+SCHEMA_ALIAS_MAP: dict[str, list[str]] = {
+    "Revenue": ["revenue", "sales", "turnover", "total sales"],
+    "EBITDA": ["ebitda", "operating profit"],
+    "Total Debt": ["debt", "borrowings", "total debt"],
+    "Equity": ["equity", "net worth", "shareholder funds"],
+    "Promoter Holding": ["promoter holding", "promoter shareholding", "promoter stake"],
+    "Loan Exposure": ["loan exposure", "outstanding loan", "credit exposure"],
+    "Cashflow": ["cashflow", "cash flow", "net cash flow", "cash from operations"],
+    "Total Assets": ["total assets", "assets"],
+    "Total Liabilities": ["total liabilities", "liabilities"],
+}
+
 
 class EntityOnboardRequest(BaseModel):
     company_name: str
@@ -90,6 +114,11 @@ class CopilotRequest(BaseModel):
     question: str = ""
 
 
+class SchemaMappingRequest(BaseModel):
+    entity_id: str
+    mappings: list[dict[str, Any]] = Field(default_factory=list)
+
+
 def _resolve_entity_id(entity_id: str | None = None) -> str | None:
     requested = (entity_id or "").strip()
     if requested:
@@ -105,6 +134,95 @@ def _get_entity_bucket(entity_id: str) -> dict[str, Any]:
     if not entity_bucket:
         raise HTTPException(status_code=404, detail="Invalid entity_id. Please onboard entity first.")
     return entity_bucket
+
+
+def _schema_key_for_label(label: str) -> str | None:
+    for field in DEFAULT_SCHEMA_FIELDS:
+        if field["label"] == label:
+            return field["key"]
+    return None
+
+
+def _extract_value_by_alias(text: str, aliases: list[str]) -> tuple[str, float] | None:
+    for alias in aliases:
+        pattern = rf"({re.escape(alias)})[^\d\n-]{{0,40}}([\d,]+(?:\.\d+)?(?:\s*(?:cr|crore|lakh|lac|million|billion))?)"
+        match = re.search(pattern, text, flags=re.IGNORECASE)
+        if match:
+            return match.group(1), _parse_number(match.group(2))
+    return None
+
+
+def _extract_detected_schema_fields(text: str, metrics: dict[str, float]) -> list[dict[str, Any]]:
+    detected_fields: list[dict[str, Any]] = []
+
+    for schema_label, aliases in SCHEMA_ALIAS_MAP.items():
+        detected = _extract_value_by_alias(text, aliases)
+        if detected:
+            detected_fields.append(
+                {
+                    "detected_field": detected[0],
+                    "value": round(float(detected[1]), 2),
+                }
+            )
+
+    # Fallback from parsed metrics when explicit labels are not found.
+    fallback_pairs = [
+        ("Revenue", metrics.get("revenue", 0.0)),
+        ("EBITDA", metrics.get("ebitda", 0.0)),
+        ("Borrowings", metrics.get("debt", 0.0)),
+        ("Net Worth", metrics.get("equity", 0.0)),
+    ]
+    existing_names = {str(item.get("detected_field", "")).lower() for item in detected_fields}
+    for fallback_label, value in fallback_pairs:
+        if value and fallback_label.lower() not in existing_names:
+            detected_fields.append({"detected_field": fallback_label, "value": round(float(value), 2)})
+
+    return detected_fields
+
+
+def _predict_schema_label(detected_field: str) -> str:
+    d = detected_field.lower()
+    best_label = "Revenue"
+    best_score = -1
+    for schema_label, aliases in SCHEMA_ALIAS_MAP.items():
+        score = sum(1 for alias in aliases if alias in d)
+        if score > best_score:
+            best_score = score
+            best_label = schema_label
+    return best_label
+
+
+def _build_schema_mapping_payload(
+    detected_fields: list[dict[str, Any]],
+    manual_mapping_by_field: dict[str, str] | None = None,
+) -> dict[str, Any]:
+    manual_mapping_by_field = manual_mapping_by_field or {}
+    mappings: list[dict[str, Any]] = []
+    structured_output: dict[str, float] = {field["key"]: 0.0 for field in DEFAULT_SCHEMA_FIELDS}
+
+    for detected in detected_fields:
+        detected_field = str(detected.get("detected_field", ""))
+        value = float(detected.get("value", 0.0) or 0.0)
+
+        mapped_label = manual_mapping_by_field.get(detected_field) or _predict_schema_label(detected_field)
+        mapped_key = _schema_key_for_label(mapped_label)
+
+        if mapped_key:
+            structured_output[mapped_key] = round(structured_output.get(mapped_key, 0.0) + value, 2)
+
+        mappings.append(
+            {
+                "detected_field": detected_field,
+                "system_field": mapped_label,
+                "value": round(value, 2),
+            }
+        )
+
+    return {
+        "schema_definition": DEFAULT_SCHEMA_FIELDS,
+        "mappings": mappings,
+        "structured_output": structured_output,
+    }
 
 
 def _count_keyword_hits(text: str, keywords: list[str]) -> int:
@@ -547,6 +665,11 @@ def entity_onboard(payload: EntityOnboardRequest) -> dict[str, Any]:
         "extracted_data": [],
         "analysis": None,
         "classifications": [],
+        "schema_mapping": {
+            "schema_definition": DEFAULT_SCHEMA_FIELDS,
+            "mappings": [],
+            "structured_output": {field["key"]: 0.0 for field in DEFAULT_SCHEMA_FIELDS},
+        },
     }
 
     entities = state.setdefault("entities", {})
@@ -558,6 +681,35 @@ def entity_onboard(payload: EntityOnboardRequest) -> dict[str, Any]:
         "entity": entity_record,
         "message": "Entity onboarded successfully.",
     }
+
+
+@app.get("/schema-definition")
+def schema_definition() -> dict[str, Any]:
+    return {"schema_definition": DEFAULT_SCHEMA_FIELDS}
+
+
+@app.post("/schema-mapping/update")
+def update_schema_mapping(payload: SchemaMappingRequest) -> dict[str, Any]:
+    resolved_entity_id = _resolve_entity_id(payload.entity_id)
+    if not resolved_entity_id:
+        raise HTTPException(status_code=400, detail="entity_id is required")
+
+    entity_bucket = _get_entity_bucket(resolved_entity_id)
+    extracted_data = list(entity_bucket.get("extracted_data", []))
+    detected_fields: list[dict[str, Any]] = []
+    for item in extracted_data:
+        detected_fields.extend(item.get("schema_detected_fields", []))
+
+    manual_map = {
+        str(item.get("detected_field", "")): str(item.get("system_field", ""))
+        for item in payload.mappings
+        if item.get("detected_field") and item.get("system_field")
+    }
+    schema_payload = _build_schema_mapping_payload(detected_fields, manual_map)
+
+    entity_bucket["schema_mapping"] = schema_payload
+    state["current_entity_id"] = resolved_entity_id
+    return {"entity_id": resolved_entity_id, **schema_payload}
 
 
 @app.post("/classify-documents")
@@ -628,6 +780,7 @@ async def upload(entity_id: str = Form(...), files: list[UploadFile] = File(...)
 
     uploaded_files: list[dict[str, Any]] = []
     extracted_data: list[dict[str, Any]] = []
+    all_detected_fields: list[dict[str, Any]] = []
 
     for upload_file in files:
         safe_name = upload_file.filename or f"upload_{datetime.utcnow().timestamp():.0f}.bin"
@@ -651,6 +804,9 @@ async def upload(entity_id: str = Form(...), files: list[UploadFile] = File(...)
         metrics = _merge_metrics(table_metrics, text_metrics)
         logger.debug("Metrics after merge (%s): %s", target.name, metrics)
 
+        schema_detected_fields = _extract_detected_schema_fields(parsed_text, metrics)
+        all_detected_fields.extend(schema_detected_fields)
+
         classifier_result = _rule_based_document_classifier(safe_name, parsed_text, table_metrics)
         approved_result = class_map.get(safe_name) or class_map.get(upload_file.filename or "") or {}
         final_type = str(approved_result.get("detected_type") or approved_result.get("predicted_type") or classifier_result["predicted_type"])
@@ -671,6 +827,7 @@ async def upload(entity_id: str = Form(...), files: list[UploadFile] = File(...)
                 "saved_path": str(target),
                 "size_bytes": len(content),
                 "classification": classification_payload,
+                "schema_detected_fields": schema_detected_fields,
             }
         )
         extracted_data.append(
@@ -681,6 +838,7 @@ async def upload(entity_id: str = Form(...), files: list[UploadFile] = File(...)
                 "detected_sections": ["balance_sheet", "pnl", "cashflow"],
                 "metrics": metrics,
                 "classification": classification_payload,
+                "schema_detected_fields": schema_detected_fields,
             }
         )
 
@@ -694,6 +852,8 @@ async def upload(entity_id: str = Form(...), files: list[UploadFile] = File(...)
     entity_bucket["extracted_data"] = extracted_data
     entity_bucket["analysis"] = analysis
     entity_bucket["classifications"] = [item.get("classification", {}) for item in uploaded_files]
+    schema_payload = _build_schema_mapping_payload(all_detected_fields)
+    entity_bucket["schema_mapping"] = schema_payload
 
     return {
         "entity_id": resolved_entity_id,
@@ -701,6 +861,7 @@ async def upload(entity_id: str = Form(...), files: list[UploadFile] = File(...)
         "extracted_data": extracted_data,
         "analysis": analysis,
         "classifications": entity_bucket["classifications"],
+        "schema_mapping": schema_payload,
     }
 
 
@@ -732,6 +893,7 @@ def results(entity_id: str | None = None) -> dict[str, Any]:
             "uploaded_files": entity_bucket.get("uploaded_files", []),
             "extracted_data": entity_bucket.get("extracted_data", []),
             "analysis": entity_bucket.get("analysis"),
+            "schema_mapping": entity_bucket.get("schema_mapping"),
         }
 
     return {
@@ -739,6 +901,7 @@ def results(entity_id: str | None = None) -> dict[str, Any]:
         "uploaded_files": state.get("uploaded_files", []),
         "extracted_data": state.get("extracted_data", []),
         "analysis": state.get("analysis"),
+        "schema_mapping": None,
     }
 
 

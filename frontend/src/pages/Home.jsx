@@ -7,9 +7,21 @@ import Dashboard from '../components/Dashboard'
 import EntityOnboarding from '../components/EntityOnboarding'
 import FileUpload from '../components/FileUpload'
 import ResearchDashboard from '../components/ResearchDashboard'
+import SchemaMappingEditor from '../components/SchemaMappingEditor'
 import brandMark from '../assets/intelli-credit-mark.svg'
 import useRevealOnScroll from '../hooks/useRevealOnScroll'
-import { classifyDocuments, generateCamReport, getApiBaseUrl, getResults, onboardEntity, runAnalysis, runResearch, runRiskScore, uploadFiles } from '../services/api'
+import {
+  classifyDocuments,
+  generateCamReport,
+  getApiBaseUrl,
+  getResults,
+  onboardEntity,
+  runAnalysis,
+  runResearch,
+  runRiskScore,
+  updateSchemaMapping,
+  uploadFiles,
+} from '../services/api'
 
 const FEATURE_CARDS = [
   { icon: '📄', title: 'Document Upload', description: 'Upload GST, bank statements, and financial reports in one secure flow.' },
@@ -70,8 +82,10 @@ export default function Home() {
   const [promoterName, setPromoterName] = useState('')
   const [entityId, setEntityId] = useState('')
   const [classifications, setClassifications] = useState([])
+  const [schemaMapping, setSchemaMapping] = useState(null)
   const [isUploading, setIsUploading] = useState(false)
   const [isClassifying, setIsClassifying] = useState(false)
+  const [isSavingSchema, setIsSavingSchema] = useState(false)
   const [isProcessing, setIsProcessing] = useState(false)
   const [isResearching, setIsResearching] = useState(false)
   const [isScoring, setIsScoring] = useState(false)
@@ -92,6 +106,7 @@ export default function Home() {
   const handleFilesSelected = (files) => {
     setSelectedFiles(files)
     setClassifications([])
+    setSchemaMapping(null)
   }
 
   const handleClassify = async () => {
@@ -252,6 +267,7 @@ export default function Home() {
       setUploadedFiles(uploadResult.uploaded_files || [])
       setExtractedData(uploadResult.extracted_data || [])
       setAnalysis(uploadResult.analysis || null)
+      setSchemaMapping(uploadResult.schema_mapping || null)
       setSuccess('Files uploaded and credit analysis completed successfully.')
 
       if (companyName.trim()) {
@@ -305,6 +321,7 @@ export default function Home() {
       setUploadedFiles(latestResults.uploaded_files || [])
       setExtractedData(latestResults.extracted_data || [])
       setAnalysis(latestResults.analysis || null)
+      setSchemaMapping(latestResults.schema_mapping || null)
       setDecision(null)
       setSuccess('Latest processed results loaded.')
     } catch (resultsError) {
@@ -323,6 +340,32 @@ export default function Home() {
     setError('')
     setSuccess('Entity onboarding completed. Continue with document upload.')
     return response
+  }
+
+  const handleSchemaMappingChange = (index, systemField) => {
+    setSchemaMapping((current) => {
+      if (!current?.mappings) return current
+      const nextMappings = current.mappings.map((item, idx) => (idx === index ? { ...item, system_field: systemField } : item))
+      return { ...current, mappings: nextMappings }
+    })
+  }
+
+  const handleSchemaMappingSave = async () => {
+    if (!entityId || !schemaMapping?.mappings) {
+      return
+    }
+
+    setIsSavingSchema(true)
+    setError('')
+    try {
+      const payload = await updateSchemaMapping({ entityId, mappings: schemaMapping.mappings })
+      setSchemaMapping(payload)
+      setSuccess('Schema mapping saved successfully.')
+    } catch (mappingError) {
+      setError(mappingError.message || 'Failed to save schema mapping')
+    } finally {
+      setIsSavingSchema(false)
+    }
   }
 
   return (
@@ -515,6 +558,15 @@ export default function Home() {
           {success && <p className="mt-4 rounded-lg bg-emerald-100 px-4 py-2 text-sm text-emerald-800">{success}</p>}
 
           <Dashboard analysis={analysis} />
+          <div className="mt-5">
+            <SchemaMappingEditor
+              schemaMapping={schemaMapping}
+              onMappingChange={handleSchemaMappingChange}
+              onSaveMapping={handleSchemaMappingSave}
+              isSaving={isSavingSchema}
+              disabled={!entityId || isUploading || isProcessing}
+            />
+          </div>
           <ResearchDashboard intelligence={research} />
           <AICreditDecision
             decision={decision}

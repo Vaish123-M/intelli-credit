@@ -82,6 +82,23 @@ export async function classifyDocuments(files, entityId) {
   })
 }
 
+export async function getSchemaDefinition() {
+  return requestJson('/schema-definition')
+}
+
+export async function updateSchemaMapping({ entityId, mappings }) {
+  return requestJson('/schema-mapping/update', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      entity_id: entityId,
+      mappings: mappings || [],
+    }),
+  })
+}
+
 export async function uploadFiles(files, entityId, classifications = []) {
   const formData = new FormData()
   files.forEach((file) => formData.append('files', file))
