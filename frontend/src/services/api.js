@@ -130,7 +130,7 @@ export async function getResults(entityId) {
   return requestJson(`/results${query}`)
 }
 
-export async function runResearch({ companyName, promoterName }) {
+export async function runResearch({ companyName, promoterName, entityId }) {
   return requestJson('/research', {
     method: 'POST',
     headers: {
@@ -139,6 +139,7 @@ export async function runResearch({ companyName, promoterName }) {
     body: JSON.stringify({
       company_name: companyName,
       promoter_name: promoterName || null,
+      entity_id: entityId || null,
     }),
   })
 }

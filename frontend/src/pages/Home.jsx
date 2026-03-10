@@ -63,7 +63,7 @@ function RevealSection({ children, className = '', delay = 0 }) {
 function AnimatedStat({ value, label }) {
   return (
     <div className="glass-card rounded-2xl p-4 text-center">
-      <p className="animated-gradient bg-gradient-to-r from-blue-600 via-purple-600 to-emerald-500 bg-clip-text text-2xl font-black text-transparent md:text-3xl">
+      <p className="animated-gradient bg-linear-to-r from-blue-600 via-purple-600 to-emerald-500 bg-clip-text text-2xl font-black text-transparent md:text-3xl">
         {value}
       </p>
       <p className="mt-1 text-xs font-semibold uppercase tracking-[0.13em] text-slate-600">{label}</p>
@@ -218,7 +218,11 @@ export default function Home() {
     setError('')
     setIsResearching(true)
     try {
-      const payload = await runResearch({ companyName: trimmedCompany, promoterName: promoterName.trim() })
+      const payload = await runResearch({
+        companyName: trimmedCompany,
+        promoterName: promoterName.trim(),
+        entityId,
+      })
       const nextResearch = payload.external_intelligence || null
       const nextAnalysis = payload.financial_analysis || analysis
 
@@ -371,7 +375,7 @@ export default function Home() {
   return (
     <main className="min-h-screen px-4 py-8 sm:px-6 lg:px-8">
       <div className="mx-auto max-w-7xl space-y-8">
-        <RevealSection className="relative overflow-hidden rounded-3xl border border-white/50 p-6 sm:p-8 lg:p-10 animated-gradient bg-gradient-to-br from-blue-600/95 via-purple-600/95 to-emerald-500/90 text-white shadow-2xl shadow-blue-700/25">
+        <RevealSection className="relative overflow-hidden rounded-3xl border border-white/50 p-6 sm:p-8 lg:p-10 animated-gradient bg-linear-to-br from-blue-600/95 via-purple-600/95 to-emerald-500/90 text-white shadow-2xl shadow-blue-700/25">
           <div className="absolute -right-24 -top-24 h-56 w-56 rounded-full bg-white/10" />
           <div className="absolute -bottom-24 left-16 h-56 w-56 rounded-full bg-emerald-100/20" />
 
@@ -475,7 +479,7 @@ export default function Home() {
                 type="button"
                 onClick={handleAnalyze}
                 disabled={!entityId || isUploading || isProcessing}
-                className="rounded-xl bg-gradient-to-r from-emerald-500 to-emerald-600 px-4 py-2 text-sm font-semibold text-white shadow-md transition hover:scale-[1.03] disabled:cursor-not-allowed disabled:opacity-70"
+                className="rounded-xl bg-linear-to-r from-emerald-500 to-emerald-600 px-4 py-2 text-sm font-semibold text-white shadow-md transition hover:scale-[1.03] disabled:cursor-not-allowed disabled:opacity-70"
               >
                 Re-run Analysis
               </button>
@@ -483,7 +487,7 @@ export default function Home() {
                 type="button"
                 onClick={handleLoadResults}
                 disabled={!entityId || isUploading || isProcessing}
-                className="rounded-xl bg-gradient-to-r from-blue-500 to-purple-600 px-4 py-2 text-sm font-semibold text-white shadow-md transition hover:scale-[1.03] disabled:cursor-not-allowed disabled:opacity-70"
+                className="rounded-xl bg-linear-to-r from-blue-500 to-purple-600 px-4 py-2 text-sm font-semibold text-white shadow-md transition hover:scale-[1.03] disabled:cursor-not-allowed disabled:opacity-70"
               >
                 Load Latest Results
               </button>
@@ -530,7 +534,7 @@ export default function Home() {
               type="button"
               onClick={() => handleResearch()}
               disabled={!entityId || isUploading || isProcessing || isResearching || isScoring || isGeneratingCam}
-              className="rounded-xl bg-gradient-to-r from-purple-600 to-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-md transition hover:scale-[1.03] disabled:cursor-not-allowed disabled:opacity-70"
+              className="rounded-xl bg-linear-to-r from-purple-600 to-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-md transition hover:scale-[1.03] disabled:cursor-not-allowed disabled:opacity-70"
             >
               {isResearching ? 'Researching...' : 'Run Research Agent'}
             </button>
@@ -586,7 +590,7 @@ export default function Home() {
           )}
         </RevealSection>
 
-        <RevealSection className="rounded-3xl border border-white/40 bg-gradient-to-r from-blue-600 via-purple-600 to-emerald-500 p-6 text-white shadow-2xl shadow-purple-800/25" delay={0.13}>
+        <RevealSection className="rounded-3xl border border-white/40 bg-linear-to-r from-blue-600 via-purple-600 to-emerald-500 p-6 text-white shadow-2xl shadow-purple-800/25" delay={0.13}>
           <div className="flex flex-wrap items-center justify-between gap-4">
             <div>
               <p className="text-xs font-semibold uppercase tracking-[0.2em] text-blue-100">Call to Action</p>

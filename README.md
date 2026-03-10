@@ -16,7 +16,7 @@ It helps an analyst move from document upload to lending decision through a guid
 - Multi-file document upload to FastAPI backend.
 - Financial metric extraction from PDF, CSV, and text-like tables.
 - Rule-based analysis outputs such as leverage, margins, and risk flags.
-- External intelligence simulation (sector risk, litigation signals, sentiment proxy).
+- Secondary research engine for external intelligence using News API, SerpAPI, and Google Search API.
 - Risk scoring that returns:
 	- `risk_score`
 	- `risk_category` (`Low Risk` / `Medium Risk` / `High Risk`)
@@ -126,6 +126,17 @@ Create `frontend/.env` (optional):
 VITE_API_BASE_URL=http://127.0.0.1:8000
 ```
 
+Backend optional API keys for secondary research engine:
+
+```env
+NEWS_API_KEY=your_news_api_key
+SERPAPI_KEY=your_serpapi_key
+GOOGLE_API_KEY=your_google_api_key
+GOOGLE_CSE_ID=your_google_custom_search_engine_id
+```
+
+If keys are not configured, the backend will use a deterministic fallback dataset so the workflow still functions in local demo mode.
+
 ## API Reference
 
 ### Upload / Analysis
@@ -144,7 +155,12 @@ VITE_API_BASE_URL=http://127.0.0.1:8000
 
 - `POST /research`
 	- Input: `company_name`, optional `promoter_name`.
-	- Returns external intelligence signals.
+	- Returns external intelligence signals including:
+		- `recent_news`
+		- `legal_risk`
+		- `sector_outlook`
+		- `market_sentiment`
+		- `research_features` for downstream risk scoring.
 
 - `POST /risk-score`
 	- Input: company name + financial analysis + external intelligence.

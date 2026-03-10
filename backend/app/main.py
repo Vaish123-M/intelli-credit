@@ -16,6 +16,8 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 from pypdf import PdfReader
 
+from app.services.research import run_secondary_research
+
 APP_ROOT = Path(__file__).resolve().parent.parent
 DOWNLOADS_DIR = APP_ROOT / "downloads"
 UPLOADS_DIR = APP_ROOT / "uploads"
@@ -94,6 +96,7 @@ class EntityOnboardRequest(BaseModel):
 class ResearchRequest(BaseModel):
     company_name: str
     promoter_name: str | None = None
+    entity_id: str | None = None
 
 
 class RiskScoreRequest(BaseModel):
@@ -664,6 +667,8 @@ def entity_onboard(payload: EntityOnboardRequest) -> dict[str, Any]:
         "uploaded_files": [],
         "extracted_data": [],
         "analysis": None,
+        "research": None,
+        "research_history": [],
         "classifications": [],
         "schema_mapping": {
             "schema_definition": DEFAULT_SCHEMA_FIELDS,
@@ -893,6 +898,8 @@ def results(entity_id: str | None = None) -> dict[str, Any]:
             "uploaded_files": entity_bucket.get("uploaded_files", []),
             "extracted_data": entity_bucket.get("extracted_data", []),
             "analysis": entity_bucket.get("analysis"),
+            "research": entity_bucket.get("research"),
+            "research_history": entity_bucket.get("research_history", []),
             "schema_mapping": entity_bucket.get("schema_mapping"),
         }
 
@@ -901,32 +908,43 @@ def results(entity_id: str | None = None) -> dict[str, Any]:
         "uploaded_files": state.get("uploaded_files", []),
         "extracted_data": state.get("extracted_data", []),
         "analysis": state.get("analysis"),
+        "research": state.get("research"),
+        "research_history": [],
         "schema_mapping": None,
     }
 
 
 @app.post("/research")
 def research(payload: ResearchRequest) -> dict[str, Any]:
-    sector, sector_risk = _sector_from_name(payload.company_name)
-    litigation_cases = 0 if sector_risk == "Low" else (1 if sector_risk == "Medium" else 3)
-    high_risk_cases = 0 if sector_risk != "High" else 1
-    negative_news_score = 0.22 if sector_risk == "Low" else (0.37 if sector_risk == "Medium" else 0.61)
+    resolved_entity_id = _resolve_entity_id(payload.entity_id)
+    intelligence = run_secondary_research(
+        company_name=payload.company_name,
+        promoter_name=payload.promoter_name,
+    )
 
-    promoter_sentiment = "Positive" if negative_news_score < 0.3 else ("Neutral" if negative_news_score < 0.5 else "Negative")
-    intelligence = {
-        "negative_news_score": round(negative_news_score, 2),
-        "news_articles_found": 12,
-        "litigation_cases": litigation_cases,
-        "high_risk_cases": high_risk_cases,
-        "sector_risk": sector_risk,
-        "sector": sector,
-        "promoter_sentiment": promoter_sentiment,
-        "promoter_sentiment_confidence": 0.73,
-        "errors": [],
-    }
+    if resolved_entity_id:
+        entity_bucket = _get_entity_bucket(resolved_entity_id)
+        entity_bucket["research"] = intelligence
+        history = list(entity_bucket.get("research_history", []))
+        history.append(
+            {
+                "timestamp": datetime.utcnow().isoformat() + "Z",
+                "company_name": payload.company_name,
+                "research_features": intelligence.get("research_features", {}),
+                "negative_news_score": intelligence.get("negative_news_score"),
+                "legal_risk": intelligence.get("legal_risk"),
+                "sector_outlook": intelligence.get("sector_outlook"),
+            }
+        )
+        entity_bucket["research_history"] = history[-20:]
+        state["current_entity_id"] = resolved_entity_id
 
     state["research"] = intelligence
-    return {"financial_analysis": state.get("analysis") or {}, "external_intelligence": intelligence}
+    return {
+        "entity_id": resolved_entity_id,
+        "financial_analysis": state.get("analysis") or {},
+        "external_intelligence": intelligence,
+    }
 
 
 @app.post("/risk-score")
@@ -939,8 +957,21 @@ def risk_score(payload: RiskScoreRequest) -> dict[str, Any]:
     gst_mismatch = bool(analysis.get("gst_mismatch", False))
     news_risk = float(intelligence.get("negative_news_score", 0.35) or 0.35)
     litigation = int(intelligence.get("high_risk_cases", 0) or 0)
+    litigation_mentions = float(intelligence.get("litigation_mentions", 0) or 0)
+    sector_growth_signal = float((intelligence.get("research_features") or {}).get("sector_growth_signal", 0.5) or 0.5)
+    market_sentiment_signal = float((intelligence.get("research_features") or {}).get("market_sentiment_signal", 0.5) or 0.5)
 
-    risk = 0.45 + (0.18 if leverage > 2 else 0.08) + (0.14 if margin < 0.1 else 0.03) + news_risk * 0.22 + (0.09 if gst_mismatch else 0) + min(litigation * 0.06, 0.12)
+    risk = (
+        0.42
+        + (0.18 if leverage > 2 else 0.08)
+        + (0.14 if margin < 0.1 else 0.03)
+        + news_risk * 0.22
+        + (0.09 if gst_mismatch else 0)
+        + min(litigation * 0.06, 0.12)
+        + min(litigation_mentions * 0.02, 0.08)
+        + market_sentiment_signal * 0.08
+        + (0.04 if sector_growth_signal < 0.45 else -0.02)
+    )
     risk = min(max(risk, 0.05), 0.99)
 
     if risk >= 0.72:
@@ -961,6 +992,12 @@ def risk_score(payload: RiskScoreRequest) -> dict[str, Any]:
         factors.append("Adverse media sentiment")
     if litigation > 0:
         factors.append("Open high-risk litigation")
+    if litigation_mentions > 0:
+        factors.append("Litigation-related mentions in external research")
+    if sector_growth_signal < 0.45:
+        factors.append("Weak sector growth trend")
+    if market_sentiment_signal >= 0.75:
+        factors.append("Adverse market sentiment")
     if not factors:
         factors = ["No major adverse signals"]
 
