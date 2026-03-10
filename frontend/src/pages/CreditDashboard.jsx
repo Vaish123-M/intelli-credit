@@ -4,7 +4,25 @@ import DashboardStats from '../components/dashboard/DashboardStats'
 import DealsTable from '../components/dashboard/DealsTable'
 import RiskChart from '../components/dashboard/RiskChart'
 import CopilotChat from '../components/dashboard/CopilotChat'
-import { getDashboardDeals, getDashboardSummary } from '../services/api'
+import { getDashboardDeals } from '../services/api'
+
+const AUTO_REFRESH_MS = 10000
+
+function buildSummaryFromDeals(deals) {
+  const normalizedDeals = Array.isArray(deals) ? deals : []
+
+  const companiesAnalyzed = normalizedDeals.length
+  const lowRisk = normalizedDeals.filter((deal) => deal.risk_category === 'Low Risk').length
+  const mediumRisk = normalizedDeals.filter((deal) => deal.risk_category === 'Medium Risk').length
+  const highRisk = normalizedDeals.filter((deal) => deal.risk_category === 'High Risk').length
+
+  return {
+    companies_analyzed: companiesAnalyzed,
+    low_risk: lowRisk,
+    medium_risk: mediumRisk,
+    high_risk: highRisk,
+  }
+}
 
 export default function CreditDashboard() {
   const [summary, setSummary] = useState({
@@ -21,9 +39,10 @@ export default function CreditDashboard() {
     setError('')
     setLoading(true)
     try {
-      const [nextSummary, nextDeals] = await Promise.all([getDashboardSummary(), getDashboardDeals()])
-      setSummary(nextSummary || {})
-      setDeals(Array.isArray(nextDeals) ? nextDeals : [])
+      const nextDeals = await getDashboardDeals()
+      const normalizedDeals = Array.isArray(nextDeals) ? nextDeals : []
+      setDeals(normalizedDeals)
+      setSummary(buildSummaryFromDeals(normalizedDeals))
     } catch (dashboardError) {
       setError(dashboardError.message || 'Failed to load dashboard data')
     } finally {
@@ -33,6 +52,12 @@ export default function CreditDashboard() {
 
   useEffect(() => {
     loadDashboard()
+
+    const intervalId = window.setInterval(() => {
+      loadDashboard()
+    }, AUTO_REFRESH_MS)
+
+    return () => window.clearInterval(intervalId)
   }, [])
 
   return (

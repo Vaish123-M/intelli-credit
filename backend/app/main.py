@@ -39,6 +39,7 @@ state: dict[str, Any] = {
     "analysis": None,
     "research": None,
     "decision": None,
+    "deals": [],
 }
 
 
@@ -538,8 +539,17 @@ def risk_score(payload: RiskScoreRequest) -> dict[str, Any]:
         "loan_limit": loan_limit,
         "interest_rate": interest_rate,
         "top_risk_factors": factors,
+        "decision_status": "Approved" if risk_category == "Low Risk" else ("Review Required" if risk_category == "Medium Risk" else "Rejected"),
+        "timestamp": datetime.utcnow().isoformat() + "Z",
     }
     state["decision"] = decision
+
+    # Keep one latest analysis per company for dashboard aggregation.
+    existing_deals: list[dict[str, Any]] = list(state.get("deals", []))
+    existing_deals = [deal for deal in existing_deals if str(deal.get("company_name", "")).lower() != payload.company_name.lower()]
+    existing_deals.append(decision)
+    state["deals"] = existing_deals
+
     return decision
 
 
@@ -583,48 +593,26 @@ def get_download(filename: str) -> FileResponse:
 
 @app.get("/dashboard/summary")
 def dashboard_summary() -> dict[str, Any]:
-    decision = state.get("decision") or {}
-    score = float(decision.get("risk_score", 0.62) or 0.62)
+    deals = list(state.get("deals", []))
+    companies_analyzed = len(deals)
+    low_risk = sum(1 for deal in deals if deal.get("risk_category") == "Low Risk")
+    medium_risk = sum(1 for deal in deals if deal.get("risk_category") == "Medium Risk")
+    high_risk = sum(1 for deal in deals if deal.get("risk_category") == "High Risk")
+    avg_risk_score = round(sum(float(deal.get("risk_score") or 0) for deal in deals) / companies_analyzed, 4) if companies_analyzed else 0
+
     return {
-        "companies_analyzed": 42,
-        "low_risk": 20,
-        "medium_risk": 14,
-        "high_risk": 8,
-        "avg_risk_score": round(score, 4),
+        "companies_analyzed": companies_analyzed,
+        "low_risk": low_risk,
+        "medium_risk": medium_risk,
+        "high_risk": high_risk,
+        "avg_risk_score": avg_risk_score,
     }
 
 
 @app.get("/dashboard/deals")
 def dashboard_deals() -> list[dict[str, Any]]:
-    return [
-        {
-            "company_name": "Apex Metals",
-            "risk_score": 0.61,
-            "risk_category": "Medium Risk",
-            "loan_limit": "INR 75,00,000",
-            "interest_rate": "14.25%",
-            "decision_status": "Review Required",
-            "timestamp": "2026-03-10T08:00:00Z",
-        },
-        {
-            "company_name": "Nova Textiles",
-            "risk_score": 0.29,
-            "risk_category": "Low Risk",
-            "loan_limit": "INR 1,50,00,000",
-            "interest_rate": "11.50%",
-            "decision_status": "Approved",
-            "timestamp": "2026-03-10T08:20:00Z",
-        },
-        {
-            "company_name": "Zenith Foods",
-            "risk_score": 0.81,
-            "risk_category": "High Risk",
-            "loan_limit": "INR 25,00,000",
-            "interest_rate": "18.50%",
-            "decision_status": "Rejected",
-            "timestamp": "2026-03-10T08:35:00Z",
-        },
-    ]
+    deals = list(state.get("deals", []))
+    return sorted(deals, key=lambda deal: str(deal.get("timestamp", "")), reverse=True)
 
 
 @app.post("/copilot/ask")
