@@ -6,7 +6,6 @@ import AICreditDecision from '../components/AICreditDecision'
 import Dashboard from '../components/Dashboard'
 import FileUpload from '../components/FileUpload'
 import ResearchDashboard from '../components/ResearchDashboard'
-import aiFinanceIllustration from '../assets/ai-finance-illustration.svg'
 import brandMark from '../assets/intelli-credit-mark.svg'
 import useRevealOnScroll from '../hooks/useRevealOnScroll'
 import { generateCamReport, getApiBaseUrl, getResults, runAnalysis, runResearch, runRiskScore, uploadFiles } from '../services/api'
@@ -250,7 +249,7 @@ export default function Home() {
           <div className="absolute -right-24 -top-24 h-56 w-56 rounded-full bg-white/10" />
           <div className="absolute -bottom-24 left-16 h-56 w-56 rounded-full bg-emerald-100/20" />
 
-          <div className="relative z-10 grid items-center gap-6 lg:grid-cols-[1.15fr,1fr]">
+          <div className="relative z-10">
             <div>
               <p className="text-xs font-semibold uppercase tracking-[0.26em] text-blue-100">🏦 Intelli-Credit Platform</p>
               <h2 className="mt-3 text-3xl font-extrabold leading-tight sm:text-4xl lg:text-5xl">
@@ -266,19 +265,6 @@ export default function Home() {
                 <AnimatedStat value="AI-driven" label="Risk insights" />
                 <AnimatedStat value="Auto CAM" label="Report generation" />
               </div>
-            </div>
-
-            <div className="rounded-3xl border border-white/40 bg-white/10 p-4 backdrop-blur-md">
-              <motion.img
-                src={aiFinanceIllustration}
-                alt="AI analyzing corporate financial charts"
-                className="h-56 w-full max-w-xl"
-                animate={{ y: [0, -6, 0] }}
-                transition={{ duration: 4, repeat: Infinity, ease: 'easeInOut' }}
-              />
-              <p className="mt-2 text-center text-xs font-semibold uppercase tracking-[0.13em] text-blue-100">
-                🤖 AI Engine analyzing corporate financial charts 📈
-              </p>
             </div>
           </div>
         </RevealSection>

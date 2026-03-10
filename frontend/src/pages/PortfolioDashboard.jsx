@@ -3,9 +3,35 @@ import { useEffect, useState } from 'react'
 import ExposureChart from '../components/portfolio/ExposureChart'
 import HighRiskTable from '../components/portfolio/HighRiskTable'
 import PortfolioStats from '../components/portfolio/PortfolioStats'
-import { getPortfolioAlerts, getPortfolioHighRisk, getPortfolioSummary } from '../services/api'
+import { getDashboardDeals, getPortfolioAlerts, getPortfolioHighRisk } from '../services/api'
 
 const AUTO_REFRESH_MS = 15000
+
+function parseLoanLimit(value) {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value
+  }
+
+  const numeric = Number(String(value ?? '').replace(/[^\d.-]/g, ''))
+  return Number.isFinite(numeric) ? numeric : 0
+}
+
+function buildSummaryFromCompanies(companies) {
+  const records = Array.isArray(companies) ? companies : []
+
+  const lowRiskCount = records.filter((company) => company?.risk_category === 'Low Risk').length
+  const mediumRiskCount = records.filter((company) => company?.risk_category === 'Medium Risk').length
+  const highRiskCount = records.filter((company) => company?.risk_category === 'High Risk').length
+  const totalExposure = records.reduce((sum, company) => sum + parseLoanLimit(company?.loan_limit), 0)
+
+  return {
+    companies_analyzed: records.length,
+    total_exposure: totalExposure,
+    low_risk: lowRiskCount,
+    medium_risk: mediumRiskCount,
+    high_risk: highRiskCount,
+  }
+}
 
 export default function PortfolioDashboard() {
   const [summary, setSummary] = useState({
@@ -24,12 +50,12 @@ export default function PortfolioDashboard() {
     setLoading(true)
     setError('')
     try {
-      const [nextSummary, nextAlerts, nextHighRisk] = await Promise.all([
-        getPortfolioSummary(),
+      const [analyzedCompanies, nextAlerts, nextHighRisk] = await Promise.all([
+        getDashboardDeals(),
         getPortfolioAlerts(),
         getPortfolioHighRisk(),
       ])
-      setSummary(nextSummary || {})
+      setSummary(buildSummaryFromCompanies(analyzedCompanies))
       setAlerts(Array.isArray(nextAlerts) ? nextAlerts : [])
       setHighRiskRecords(Array.isArray(nextHighRisk) ? nextHighRisk : [])
     } catch (portfolioError) {
