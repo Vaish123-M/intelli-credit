@@ -211,7 +211,7 @@ Backend supports environment-driven CORS via `CORS_ORIGINS`.
 
 - Local dev default: `*`
 - Production recommended: set `CORS_ORIGINS` to your exact Vercel domain
-	- Example: `https://intelli-credit-gamma.vercel.app/`
+	- Live frontend URL: `https://intelli-credit-gamma.vercel.app/`
   - Multiple origins: comma-separated list
 
 This is already wired in backend startup and ready for hosted deployments.
