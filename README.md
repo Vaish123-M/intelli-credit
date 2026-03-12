@@ -127,9 +127,9 @@ Frontend app:
 
 Add your public links below before submission so the app is accessible without VPN:
 
-- Frontend URL: `https://<your-frontend-domain>`
-- Backend API URL: `https://<your-backend-domain>`
-- API Docs URL: `https://<your-backend-domain>/docs`
+- Frontend URL: `https://intelli-credit-gamma.vercel.app/`
+- Backend API URL: `https://intelli-credit-backend-6lnw.onrender.com`
+- API Docs URL: `https://intelli-credit-backend-6lnw.onrender.com/docs`
 
 Recommended production split:
 
@@ -176,7 +176,7 @@ Frontend should be deployed on Vercel. Backend should be deployed on a persisten
 3. Build command: `npm run build`
 4. Output directory: `dist`
 5. Add environment variable:
-	- `VITE_API_BASE_URL=https://<your-backend-domain>`
+	- `VITE_API_BASE_URL=https://intelli-credit-backend-6lnw.onrender.com`
 6. Deploy and verify frontend URL loads.
 
 Project includes:
@@ -199,7 +199,7 @@ Render is preconfigured with root-level `render.yaml`.
 	- `GOOGLE_API_KEY`
 	- `GOOGLE_CSE_ID`
 4. Set `CORS_ORIGINS` to your frontend URL.
-5. Verify API docs at `https://<your-backend-domain>/docs`.
+5. Verify API docs at `https://intelli-credit-backend-6lnw.onrender.com/docs`.
 
 Project includes:
 
@@ -211,7 +211,7 @@ Backend supports environment-driven CORS via `CORS_ORIGINS`.
 
 - Local dev default: `*`
 - Production recommended: set `CORS_ORIGINS` to your exact Vercel domain
-  - Example: `https://your-app.vercel.app`
+	- Example: `https://intelli-credit-gamma.vercel.app/`
   - Multiple origins: comma-separated list
 
 This is already wired in backend startup and ready for hosted deployments.
