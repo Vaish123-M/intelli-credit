@@ -131,6 +131,91 @@ Add your public links below before submission so the app is accessible without V
 - Backend API URL: `https://<your-backend-domain>`
 - API Docs URL: `https://<your-backend-domain>/docs`
 
+Recommended production split:
+
+- Frontend: Vercel
+- Backend: Render (via root `render.yaml`)
+
+## Submission Checklist (Hackathon)
+
+Mark all as complete before submitting:
+
+- [ ] Frontend URL is publicly accessible (no login required for judge demo path).
+- [ ] Backend API URL is publicly accessible.
+- [ ] API docs URL loads successfully.
+- [ ] End-to-end flow works from upload to final report generation.
+- [ ] All 5 mandatory document categories are enforced during upload.
+- [ ] Dynamic schema editor supports adding/removing fields.
+- [ ] Extraction confidence/provenance is visible in API response payload.
+- [ ] Test suite runs successfully (`pytest -q tests`).
+
+## Judge Demo Flow (2-3 Minutes)
+
+Use this exact sequence during judging:
+
+1. Open frontend URL and onboard an entity.
+2. Upload and classify files for all required document categories:
+	- ALM (Asset Liability Management)
+	- Shareholding Pattern
+	- Borrowing Profile
+	- Annual Report
+	- Portfolio Cuts / Performance Data
+3. Run upload + analysis.
+4. Run research and risk score.
+5. Generate Final Report and download the PDF.
+6. Optionally open `/docs` to show API transparency.
+
+## Deployment Guide (Recommended)
+
+Frontend should be deployed on Vercel. Backend should be deployed on a persistent Python host (for example Render or Railway).
+
+### Frontend (Vercel)
+
+1. Import the repository into Vercel.
+2. Set project root directory to `frontend`.
+3. Build command: `npm run build`
+4. Output directory: `dist`
+5. Add environment variable:
+	- `VITE_API_BASE_URL=https://<your-backend-domain>`
+6. Deploy and verify frontend URL loads.
+
+Project includes:
+
+- `frontend/vercel.json`
+- `frontend/.env.example`
+
+### Backend (Render)
+
+Render is preconfigured with root-level `render.yaml`.
+
+1. Create a new Blueprint service on Render from this repository.
+2. Render auto-detects:
+	- root directory: `backend`
+	- build command: `pip install -r requirements.txt`
+	- start command: `uvicorn app.main:app --host 0.0.0.0 --port $PORT`
+3. Set secret env vars in Render dashboard (optional research connectors):
+	- `NEWS_API_KEY`
+	- `SERPAPI_KEY`
+	- `GOOGLE_API_KEY`
+	- `GOOGLE_CSE_ID`
+4. Set `CORS_ORIGINS` to your frontend URL.
+5. Verify API docs at `https://<your-backend-domain>/docs`.
+
+Project includes:
+
+- `render.yaml`
+
+### CORS
+
+Backend supports environment-driven CORS via `CORS_ORIGINS`.
+
+- Local dev default: `*`
+- Production recommended: set `CORS_ORIGINS` to your exact Vercel domain
+  - Example: `https://your-app.vercel.app`
+  - Multiple origins: comma-separated list
+
+This is already wired in backend startup and ready for hosted deployments.
+
 Deployment readiness checklist:
 
 - Backend CORS allows your frontend domain.
@@ -218,9 +303,25 @@ If keys are not configured, the backend will use a deterministic fallback datase
 
 ## Data Notes
 
-- Backend currently uses in-memory state (`state` dict in `backend/app/main.py`).
-- Restarting backend resets uploaded data, analysis, and deals.
+- Backend persists state to `backend/data/app_state.json`.
+- Uploaded files are stored in `backend/uploads` and reports in `backend/downloads`.
+- If backend storage is ephemeral on your host, reports/state may reset on redeploy or restart.
 - Portfolio demo endpoints (`/portfolio/*`) may include static sample responses depending on endpoint.
+
+## Submission Requirements Coverage
+
+This section maps key challenge requirements to implemented functionality.
+
+1. Enforce 5-document requirement
+	- Implemented in backend upload validation and frontend blocker flow.
+2. Public deployment links
+	- Covered by Hosted Deployment section with frontend/backend/docs URLs.
+3. User-defined schema fields
+	- Implemented via schema editor (add/remove fields) and backend persistence.
+4. Extraction confidence/provenance
+	- Included in API extraction results and summarized in responses.
+5. Test coverage
+	- Backend tests available and runnable via `pytest -q tests`; CI workflow included.
 
 ## Troubleshooting
 
