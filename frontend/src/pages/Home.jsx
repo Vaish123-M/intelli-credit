@@ -80,6 +80,73 @@ function AnimatedStat({ value, label }) {
   )
 }
 
+function StageProgressBar({ stages }) {
+  return (
+    <div className="mb-1">
+      <div className="flex items-start overflow-x-auto pb-1">
+        {stages.map((stage, index) => (
+          <div key={stage.label} className="flex flex-1 flex-col items-center min-w-24">
+            <div className="flex w-full items-center">
+              {index > 0 && (
+                <div
+                  className={`h-1 flex-1 transition-colors ${
+                    stages[index - 1].done ? 'bg-emerald-400' : 'bg-slate-200'
+                  }`}
+                />
+              )}
+              <div
+                className={[
+                  'mx-auto flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-sm font-bold transition-all',
+                  stage.done
+                    ? 'bg-emerald-500 text-white'
+                    : stage.active
+                    ? 'bg-blue-600 text-white ring-4 ring-blue-100'
+                    : 'bg-slate-200 text-slate-500',
+                ].join(' ')}
+              >
+                {stage.done ? '✓' : index + 1}
+              </div>
+              {index < stages.length - 1 && (
+                <div
+                  className={`h-1 flex-1 transition-colors ${
+                    stage.done ? 'bg-emerald-400' : 'bg-slate-200'
+                  }`}
+                />
+              )}
+            </div>
+            <p
+              className={`mt-1 px-1 text-center text-xs font-semibold leading-tight ${
+                stage.done ? 'text-emerald-700' : stage.active ? 'text-blue-700' : 'text-slate-400'
+              }`}
+            >
+              {stage.label}
+            </p>
+          </div>
+        ))}
+      </div>
+
+      {stages.some((s) => s.blocker) && (
+        <div className="mt-3 space-y-2">
+          {stages
+            .filter((s) => s.blocker)
+            .map((stage) => (
+              <div
+                key={`${stage.label}-blocker`}
+                className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-2.5"
+              >
+                <span className="mt-0.5 text-base" aria-hidden="true">⚠️</span>
+                <div>
+                  <p className="text-sm font-semibold text-amber-800">{stage.label} — Action Required</p>
+                  <p className="text-xs text-amber-700">{stage.blocker}</p>
+                </div>
+              </div>
+            ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function Home() {
   const [selectedFiles, setSelectedFiles] = useState([])
   const [uploadedFiles, setUploadedFiles] = useState([])
@@ -102,6 +169,22 @@ export default function Home() {
   const [isGeneratingFinalReport, setIsGeneratingFinalReport] = useState(false)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
+
+  const approvedDocTypes = useMemo(
+    () =>
+      new Set(
+        classifications
+          .filter((item) => item.approved)
+          .map((item) => item.detected_type || item.predicted_type)
+          .filter(Boolean)
+      ),
+    [classifications]
+  )
+
+  const missingRequiredTypes = useMemo(
+    () => REQUIRED_DOC_TYPES.filter((t) => !approvedDocTypes.has(t)),
+    [approvedDocTypes]
+  )
 
   const statusLabel = useMemo(() => {
     if (isClassifying) return 'Classifying uploaded documents by type...'
@@ -453,6 +536,48 @@ export default function Home() {
     }
   }
 
+  const stage1Done = !!entityId
+  const stage2Done = !!analysis
+  const stage3Done = !!research
+  const stage4Done = !!decision
+
+  const stages = [
+    {
+      label: 'Entity Onboarding',
+      done: stage1Done,
+      active: !stage1Done,
+      blocker: !stage1Done
+        ? 'Complete entity onboarding with company and promoter details to begin.'
+        : null,
+    },
+    {
+      label: 'Document Upload',
+      done: stage2Done,
+      active: stage1Done && !stage2Done,
+      blocker:
+        stage1Done && !stage2Done && missingRequiredTypes.length > 0
+          ? `Missing required docs: ${missingRequiredTypes.slice(0, 2).join(', ')}${
+              missingRequiredTypes.length > 2 ? ` +${missingRequiredTypes.length - 2} more` : ''
+            }. All 5 types must be uploaded.`
+          : null,
+    },
+    {
+      label: 'Research & Analysis',
+      done: stage3Done,
+      active: stage2Done && !stage3Done,
+      blocker:
+        stage2Done && !stage3Done && !companyName.trim()
+          ? 'Enter the company name above to run the external intelligence research agent.'
+          : null,
+    },
+    {
+      label: 'AI Decision & Report',
+      done: stage4Done,
+      active: stage3Done && !stage4Done,
+      blocker: null,
+    },
+  ]
+
   return (
     <main className="min-h-screen px-4 py-8 sm:px-6 lg:px-8">
       <div className="mx-auto max-w-7xl space-y-8">
@@ -573,6 +698,10 @@ export default function Home() {
                 Load Latest Results
               </button>
             </div>
+          </div>
+
+          <div className="mt-5">
+            <StageProgressBar stages={stages} />
           </div>
 
           <div className="mt-5">
