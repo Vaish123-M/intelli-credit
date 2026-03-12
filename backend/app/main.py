@@ -3,6 +3,8 @@ from __future__ import annotations
 import logging
 import json
 import re
+import time
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -23,8 +25,11 @@ from app.services.research import run_secondary_research
 APP_ROOT = Path(__file__).resolve().parent.parent
 DOWNLOADS_DIR = APP_ROOT / "downloads"
 UPLOADS_DIR = APP_ROOT / "uploads"
+DATA_DIR = APP_ROOT / "data"
+STATE_FILE = DATA_DIR / "app_state.json"
 DOWNLOADS_DIR.mkdir(parents=True, exist_ok=True)
 UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
+DATA_DIR.mkdir(parents=True, exist_ok=True)
 
 app = FastAPI(title="Intelli-Credit API", version="0.2.0")
 
@@ -38,18 +43,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-state: dict[str, Any] = {
-    "uploaded_files": [],
-    "extracted_data": [],
-    "analysis": None,
-    "research": None,
-    "decision": None,
-    "deals": [],
-    "entities": {},
-    "current_entity_id": None,
-}
-
 
 def _format_swot_for_report(swot: dict[str, Any]) -> list[str]:
     sections = [
@@ -74,6 +67,10 @@ DOC_TYPES = [
     "Portfolio Cuts / Performance Data",
 ]
 REQUIRED_DOC_TYPES = set(DOC_TYPES)
+ALLOWED_UPLOAD_EXTENSIONS = {".pdf", ".csv", ".txt"}
+MAX_FILE_SIZE_BYTES = 25 * 1024 * 1024
+RESEARCH_TIMEOUT_SECONDS = 12
+RESEARCH_RETRY_COUNT = 3
 
 DEFAULT_SCHEMA_FIELDS: list[dict[str, str]] = [
     {"key": "revenue", "label": "Revenue"},
@@ -98,6 +95,74 @@ SCHEMA_ALIAS_MAP: dict[str, list[str]] = {
     "Total Assets": ["total assets", "assets"],
     "Total Liabilities": ["total liabilities", "liabilities"],
 }
+
+
+def _default_state() -> dict[str, Any]:
+    return {
+        "uploaded_files": [],
+        "extracted_data": [],
+        "analysis": None,
+        "research": None,
+        "decision": None,
+        "deals": [],
+        "entities": {},
+        "runs": [],
+        "current_entity_id": None,
+    }
+
+
+def _load_state() -> dict[str, Any]:
+    if not STATE_FILE.exists():
+        return _default_state()
+
+    try:
+        payload = json.loads(STATE_FILE.read_text(encoding="utf-8"))
+    except Exception:  # noqa: BLE001
+        logger.exception("State file could not be parsed. Re-initializing default state.")
+        return _default_state()
+
+    if not isinstance(payload, dict):
+        return _default_state()
+
+    state_obj = _default_state()
+    state_obj.update(payload)
+    if not isinstance(state_obj.get("entities"), dict):
+        state_obj["entities"] = {}
+    if not isinstance(state_obj.get("runs"), list):
+        state_obj["runs"] = []
+    return state_obj
+
+
+def _persist_state() -> None:
+    try:
+        STATE_FILE.write_text(json.dumps(state, ensure_ascii=True, indent=2), encoding="utf-8")
+    except Exception:  # noqa: BLE001
+        logger.exception("Failed to persist application state to disk")
+
+
+def _validate_upload_payload(file_name: str, content: bytes) -> None:
+    suffix = Path(file_name or "").suffix.lower()
+    if suffix not in ALLOWED_UPLOAD_EXTENSIONS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported file type '{suffix or 'unknown'}'. Allowed: {', '.join(sorted(ALLOWED_UPLOAD_EXTENSIONS))}",
+        )
+
+    if len(content) > MAX_FILE_SIZE_BYTES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"File '{file_name}' exceeds max size of {MAX_FILE_SIZE_BYTES // (1024 * 1024)} MB",
+        )
+
+
+def _run_antivirus_placeholder(file_name: str, content: bytes) -> None:
+    # Placeholder malware scan hook. Replace with a real scanner integration before production.
+    marker = b"EICAR-STANDARD-ANTIVIRUS-TEST-FILE"
+    if marker in content:
+        raise HTTPException(status_code=400, detail=f"Potential malware signature detected in '{file_name}'")
+
+
+state: dict[str, Any] = _load_state()
 
 
 class EntityOnboardRequest(BaseModel):
@@ -398,6 +463,43 @@ def _extract_text(path: Path) -> str:
     return path.read_text(encoding="utf-8", errors="ignore")
 
 
+def _extract_text_with_ocr_fallback(path: Path) -> tuple[str, dict[str, Any]]:
+    text = _extract_text(path)
+    quality = {
+        "ocr_used": False,
+        "ocr_available": False,
+        "ocr_pages_processed": 0,
+        "text_char_count": len(text),
+    }
+
+    if path.suffix.lower() != ".pdf" or text.strip():
+        return text, quality
+
+    try:
+        from pdf2image import convert_from_path  # pyright: ignore[reportMissingImports]
+        import pytesseract  # pyright: ignore[reportMissingImports]
+
+        images = convert_from_path(str(path), dpi=200)
+        ocr_pages: list[str] = []
+        for image in images:
+            ocr_pages.append(pytesseract.image_to_string(image) or "")
+
+        ocr_text = "\n".join(ocr_pages).strip()
+        if ocr_text:
+            quality["ocr_used"] = True
+            quality["ocr_available"] = True
+            quality["ocr_pages_processed"] = len(images)
+            quality["text_char_count"] = len(ocr_text)
+            return ocr_text, quality
+
+        quality["ocr_available"] = True
+        quality["ocr_pages_processed"] = len(images)
+        return text, quality
+    except Exception:  # noqa: BLE001
+        logger.debug("OCR fallback unavailable for %s", path.name)
+        return text, quality
+
+
 def _normalize_column_name(column_name: Any) -> str:
     cleaned = re.sub(r"[^a-z0-9]+", "_", str(column_name or "").strip().lower())
     return cleaned.strip("_") or "col"
@@ -423,10 +525,17 @@ def _is_metric_label(text: str) -> bool:
     return any(k in t for k in ["revenue", "sales", "turnover", "ebitda", "debt", "equity", "net worth", "borrowings"])
 
 
-def _parse_financial_dataframe(df: pd.DataFrame, page_idx: int, table_idx: int) -> dict[str, int]:
+def _parse_financial_dataframe(df: pd.DataFrame, page_idx: int, table_idx: int, file_name: str) -> tuple[dict[str, int], dict[str, dict[str, Any]], dict[str, Any]]:
     parsed: dict[str, int] = {}
+    provenance: dict[str, dict[str, Any]] = {}
+    quality = {
+        "table_rows_total": 0,
+        "table_rows_with_numeric_values": 0,
+        "table_rows_with_metric_matches": 0,
+        "table_confidence": 0.0,
+    }
     if df.empty or len(df.columns) < 2:
-        return parsed
+        return parsed, provenance, quality
 
     df = df.fillna("")
     df.columns = [_normalize_column_name(col) for col in df.columns]
@@ -444,7 +553,7 @@ def _parse_financial_dataframe(df: pd.DataFrame, page_idx: int, table_idx: int) 
 
     value_cols = [c for c in df.columns if c != metric_col]
     if not value_cols:
-        return parsed
+        return parsed, provenance, quality
 
     year_candidates = []
     for col in value_cols:
@@ -466,30 +575,57 @@ def _parse_financial_dataframe(df: pd.DataFrame, page_idx: int, table_idx: int) 
         current_col = scored_cols[-1][1] if scored_cols else value_cols[-1]
         previous_col = value_cols[-2] if len(value_cols) > 1 else None
 
-    for _, row in df.iterrows():
+    quality["table_rows_total"] = int(len(df.index))
+    for row_idx, row in df.iterrows():
         label = str(row.get(metric_col, "")).strip().lower()
         current_val = _clean_numeric_value(row.get(current_col))
         previous_val = _clean_numeric_value(row.get(previous_col)) if previous_col else None
 
+        if current_val is not None:
+            quality["table_rows_with_numeric_values"] += 1
+
         if current_val is None or not _is_metric_label(label):
             continue
 
+        quality["table_rows_with_metric_matches"] += 1
+
+        def _set_metric(metric_key: str, metric_value: int) -> None:
+            parsed[metric_key] = metric_value
+            provenance[metric_key] = {
+                "file": file_name,
+                "page": page_idx,
+                "table": table_idx,
+                "row": int(row_idx) + 1,
+                "label": label,
+                "source": "table",
+            }
+
         if any(k in label for k in ["revenue", "sales", "turnover"]):
-            parsed["revenue"] = current_val
+            _set_metric("revenue", current_val)
             if previous_val is not None:
-                parsed["revenue_previous"] = previous_val
+                _set_metric("revenue_previous", previous_val)
         elif "ebitda" in label:
-            parsed["ebitda"] = current_val
+            _set_metric("ebitda", current_val)
         elif "equity" in label or "net worth" in label or "shareholder" in label:
-            parsed["equity"] = current_val
+            _set_metric("equity", current_val)
         elif "total debt" in label or "borrowings" in label or label == "debt" or label.endswith(" debt"):
-            parsed["debt"] = current_val
+            _set_metric("debt", current_val)
 
-    return parsed
+    numeric_rows = quality["table_rows_with_numeric_values"]
+    metric_rows = quality["table_rows_with_metric_matches"]
+    quality["table_confidence"] = round(min(1.0, (metric_rows / numeric_rows) if numeric_rows else 0.0), 4)
+    return parsed, provenance, quality
 
 
-def _extract_financials_from_text_table(text: str) -> dict[str, int]:
+def _extract_financials_from_text_table(text: str, file_name: str) -> tuple[dict[str, int], dict[str, dict[str, Any]], dict[str, Any]]:
     parsed: dict[str, int] = {}
+    provenance: dict[str, dict[str, Any]] = {}
+    quality = {
+        "table_rows_total": 0,
+        "table_rows_with_numeric_values": 0,
+        "table_rows_with_metric_matches": 0,
+        "table_confidence": 0.0,
+    }
     lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
     rows: list[list[str]] = []
 
@@ -506,7 +642,7 @@ def _extract_financials_from_text_table(text: str) -> dict[str, int]:
                 rows.append(parts)
 
     if len(rows) < 2:
-        return parsed
+        return parsed, provenance, quality
 
     header = rows[0]
     body = rows[1:]
@@ -517,30 +653,45 @@ def _extract_financials_from_text_table(text: str) -> dict[str, int]:
         normalized_rows.append(r[: len(header)])
 
     df = pd.DataFrame(normalized_rows, columns=header)
-    parsed = _parse_financial_dataframe(df, page_idx=0, table_idx=0)
+    parsed, provenance, quality = _parse_financial_dataframe(df, page_idx=0, table_idx=0, file_name=file_name)
     if parsed:
         logger.debug("Parsed financial values from text-table fallback: %s", parsed)
-    return parsed
+    return parsed, provenance, quality
 
 
-def _extract_financials_from_csv(path: Path) -> dict[str, int]:
+def _extract_financials_from_csv(path: Path) -> tuple[dict[str, int], dict[str, dict[str, Any]], dict[str, Any]]:
     parsed: dict[str, int] = {}
+    provenance: dict[str, dict[str, Any]] = {}
+    quality = {
+        "table_rows_total": 0,
+        "table_rows_with_numeric_values": 0,
+        "table_rows_with_metric_matches": 0,
+        "table_confidence": 0.0,
+    }
     try:
         df = pd.read_csv(path)
     except Exception:  # noqa: BLE001
         try:
             df = pd.read_csv(path, encoding="latin-1")
         except Exception:  # noqa: BLE001
-            return parsed
+            return parsed, provenance, quality
 
-    parsed = _parse_financial_dataframe(df, page_idx=0, table_idx=1)
+    parsed, provenance, quality = _parse_financial_dataframe(df, page_idx=1, table_idx=1, file_name=path.name)
     if parsed:
         logger.debug("Parsed financial values from CSV: %s", parsed)
-    return parsed
+    return parsed, provenance, quality
 
 
-def _extract_financials_from_pdf_tables(path: Path) -> dict[str, int]:
+def _extract_financials_from_pdf_tables(path: Path) -> tuple[dict[str, int], dict[str, dict[str, Any]], dict[str, Any]]:
     parsed: dict[str, int] = {}
+    provenance: dict[str, dict[str, Any]] = {}
+    quality = {
+        "table_rows_total": 0,
+        "table_rows_with_numeric_values": 0,
+        "table_rows_with_metric_matches": 0,
+        "table_confidence": 0.0,
+        "tables_examined": 0,
+    }
 
     with pdfplumber.open(str(path)) as pdf:
         for page_idx, page in enumerate(pdf.pages, start=1):
@@ -560,19 +711,33 @@ def _extract_financials_from_pdf_tables(path: Path) -> dict[str, int]:
                 if not table or len(table) < 2:
                     continue
 
+                quality["tables_examined"] += 1
+
                 raw_columns = table[0]
                 rows = table[1:]
                 df = pd.DataFrame(rows, columns=raw_columns)
-                table_parsed = _parse_financial_dataframe(df, page_idx, table_idx)
+                table_parsed, table_provenance, table_quality = _parse_financial_dataframe(df, page_idx, table_idx, path.name)
                 parsed.update(table_parsed)
+                provenance.update(table_provenance)
+                quality["table_rows_total"] += int(table_quality["table_rows_total"])
+                quality["table_rows_with_numeric_values"] += int(table_quality["table_rows_with_numeric_values"])
+                quality["table_rows_with_metric_matches"] += int(table_quality["table_rows_with_metric_matches"])
 
             # If regular table extraction fails, try parsing text as table-like rows.
             if not parsed:
-                text_fallback = _extract_financials_from_text_table(page.extract_text() or "")
+                text_fallback, fallback_provenance, fallback_quality = _extract_financials_from_text_table(page.extract_text() or "", path.name)
                 parsed.update(text_fallback)
+                provenance.update(fallback_provenance)
+                quality["table_rows_total"] += int(fallback_quality["table_rows_total"])
+                quality["table_rows_with_numeric_values"] += int(fallback_quality["table_rows_with_numeric_values"])
+                quality["table_rows_with_metric_matches"] += int(fallback_quality["table_rows_with_metric_matches"])
+
+    numeric_rows = quality["table_rows_with_numeric_values"]
+    metric_rows = quality["table_rows_with_metric_matches"]
+    quality["table_confidence"] = round(min(1.0, (metric_rows / numeric_rows) if numeric_rows else 0.0), 4)
 
     logger.debug("Parsed financial values from PDF tables: %s", parsed)
-    return parsed
+    return parsed, provenance, quality
 
 
 def _parse_number(raw: str) -> float:
@@ -601,7 +766,7 @@ def _value_for_keywords(text: str, *keywords: str) -> float | None:
     return _parse_number(match.group(1))
 
 
-def _extract_metrics(text: str) -> dict[str, float]:
+def _extract_metrics(text: str, file_name: str) -> tuple[dict[str, float], dict[str, dict[str, Any]]]:
     revenue = _value_for_keywords(text, "revenue", "sales", "turnover")
     debt = _value_for_keywords(text, "total debt", "borrowings", "debt")
     equity = _value_for_keywords(text, "net worth", "equity", "shareholder funds")
@@ -625,7 +790,7 @@ def _extract_metrics(text: str) -> dict[str, float]:
     bank_debits = bank_debits if bank_debits is not None else 0.0
     gst_turnover = gst_turnover if gst_turnover is not None else 0.0
 
-    return {
+    metrics = {
         "revenue": float(revenue or 0.0),
         "debt": float(debt or 0.0),
         "equity": float(equity or 0.0),
@@ -636,13 +801,109 @@ def _extract_metrics(text: str) -> dict[str, float]:
         "revenue_previous": 0.0,
     }
 
+    provenance: dict[str, dict[str, Any]] = {}
+    for metric, value in metrics.items():
+        if value > 0:
+            provenance[metric] = {
+                "file": file_name,
+                "page": None,
+                "table": None,
+                "row": None,
+                "label": metric,
+                "source": "text_regex",
+            }
 
-def _merge_metrics(table_metrics: dict[str, int], text_metrics: dict[str, float]) -> dict[str, float]:
+    return metrics, provenance
+
+
+def _merge_metrics(
+    table_metrics: dict[str, int],
+    text_metrics: dict[str, float],
+    table_provenance: dict[str, dict[str, Any]],
+    text_provenance: dict[str, dict[str, Any]],
+) -> tuple[dict[str, float], dict[str, dict[str, Any]]]:
     merged = dict(text_metrics)
+    merged_provenance = dict(text_provenance)
     for metric in ["revenue", "ebitda", "debt", "equity", "revenue_previous"]:
         if table_metrics.get(metric) is not None:
             merged[metric] = float(table_metrics[metric])
-    return merged
+            if metric in table_provenance:
+                merged_provenance[metric] = table_provenance[metric]
+    return merged, merged_provenance
+
+
+def _compute_extraction_quality(text: str, table_quality: dict[str, Any], ocr_quality: dict[str, Any]) -> dict[str, Any]:
+    char_count = len(text)
+    table_confidence = float(table_quality.get("table_confidence") or 0.0)
+    ocr_used = bool(ocr_quality.get("ocr_used", False))
+
+    base_score = 0.2
+    if char_count > 500:
+        base_score += 0.3
+    if char_count > 2500:
+        base_score += 0.15
+    base_score += table_confidence * 0.35
+    if ocr_used:
+        base_score -= 0.05
+
+    return {
+        "text_char_count": char_count,
+        "table_confidence": round(table_confidence, 4),
+        "quality_score": round(max(0.0, min(1.0, base_score)), 4),
+        "ocr_used": ocr_used,
+        "ocr_available": bool(ocr_quality.get("ocr_available", False)),
+        "ocr_pages_processed": int(ocr_quality.get("ocr_pages_processed", 0)),
+        "table_rows_total": int(table_quality.get("table_rows_total", 0)),
+        "table_rows_with_numeric_values": int(table_quality.get("table_rows_with_numeric_values", 0)),
+        "table_rows_with_metric_matches": int(table_quality.get("table_rows_with_metric_matches", 0)),
+        "tables_examined": int(table_quality.get("tables_examined", 0)),
+    }
+
+
+def _summarize_extraction_quality(extracted_data: list[dict[str, Any]]) -> dict[str, Any]:
+    if not extracted_data:
+        return {
+            "files_processed": 0,
+            "average_quality_score": 0.0,
+            "average_table_confidence": 0.0,
+            "ocr_files": 0,
+        }
+
+    quality_items = [item.get("extraction_quality") or {} for item in extracted_data]
+    total = len(quality_items)
+    avg_quality = sum(float(item.get("quality_score") or 0.0) for item in quality_items) / total
+    avg_table_conf = sum(float(item.get("table_confidence") or 0.0) for item in quality_items) / total
+    ocr_files = sum(1 for item in quality_items if bool(item.get("ocr_used", False)))
+
+    return {
+        "files_processed": total,
+        "average_quality_score": round(avg_quality, 4),
+        "average_table_confidence": round(avg_table_conf, 4),
+        "ocr_files": ocr_files,
+    }
+
+
+def _run_secondary_research_with_retry(company_name: str, promoter_name: str | None = None) -> dict[str, Any]:
+    attempt = 0
+    last_error: Exception | None = None
+
+    while attempt < RESEARCH_RETRY_COUNT:
+        attempt += 1
+        try:
+            with ThreadPoolExecutor(max_workers=1) as pool:
+                future = pool.submit(run_secondary_research, company_name, promoter_name)
+                return future.result(timeout=RESEARCH_TIMEOUT_SECONDS)
+        except FuturesTimeoutError as error:
+            last_error = error
+            logger.warning("Research timeout for %s on attempt %s/%s", company_name, attempt, RESEARCH_RETRY_COUNT)
+        except Exception as error:  # noqa: BLE001
+            last_error = error
+            logger.warning("Research failure for %s on attempt %s/%s: %s", company_name, attempt, RESEARCH_RETRY_COUNT, error)
+
+        if attempt < RESEARCH_RETRY_COUNT:
+            time.sleep(0.4 * attempt)
+
+    raise HTTPException(status_code=504, detail=f"Research service failed after {RESEARCH_RETRY_COUNT} attempts: {last_error}") from last_error
 
 
 def _build_analysis(extracted_data: list[dict[str, Any]]) -> dict[str, Any]:
@@ -756,6 +1017,7 @@ def entity_onboard(payload: EntityOnboardRequest) -> dict[str, Any]:
     entities = state.setdefault("entities", {})
     entities[entity_id] = entity_record
     state["current_entity_id"] = entity_id
+    _persist_state()
 
     return {
         "entity_id": entity_id,
@@ -800,6 +1062,7 @@ def update_schema_mapping(payload: SchemaMappingRequest) -> dict[str, Any]:
 
     entity_bucket["schema_mapping"] = schema_payload
     state["current_entity_id"] = resolved_entity_id
+    _persist_state()
     return {"entity_id": resolved_entity_id, **schema_payload}
 
 
@@ -818,20 +1081,27 @@ async def classify_documents(entity_id: str = Form(...), files: list[UploadFile]
     for upload_file in files:
         safe_name = upload_file.filename or f"upload_{datetime.utcnow().timestamp():.0f}.bin"
         content = await upload_file.read()
+        _validate_upload_payload(safe_name, content)
+        _run_antivirus_placeholder(safe_name, content)
         temp_path = UPLOADS_DIR / f"tmp_{safe_name}"
         temp_path.write_bytes(content)
 
         try:
-            parsed_text = _extract_text(temp_path)
+            parsed_text, _ = _extract_text_with_ocr_fallback(temp_path)
             table_metrics: dict[str, int] = {}
             if temp_path.suffix.lower() == ".pdf":
-                table_metrics = _extract_financials_from_pdf_tables(temp_path)
+                table_metrics, _, _ = _extract_financials_from_pdf_tables(temp_path)
             elif temp_path.suffix.lower() == ".csv":
-                table_metrics = _extract_financials_from_csv(temp_path)
+                table_metrics, _, _ = _extract_financials_from_csv(temp_path)
             else:
-                table_metrics = _extract_financials_from_text_table(parsed_text)
+                table_metrics, _, _ = _extract_financials_from_text_table(parsed_text, safe_name)
 
             results.append(_rule_based_document_classifier(safe_name, parsed_text, table_metrics))
+        except HTTPException:
+            raise
+        except Exception as error:  # noqa: BLE001
+            logger.exception("Classification failed for file %s", safe_name)
+            raise HTTPException(status_code=400, detail=f"Failed to classify '{safe_name}': {error}") from error
         finally:
             try:
                 temp_path.unlink(missing_ok=True)
@@ -840,6 +1110,7 @@ async def classify_documents(entity_id: str = Form(...), files: list[UploadFile]
 
     entity_bucket["classifications"] = results
     state["current_entity_id"] = resolved_entity_id
+    _persist_state()
 
     return {
         "entity_id": resolved_entity_id,
@@ -898,22 +1169,34 @@ async def upload(entity_id: str = Form(...), files: list[UploadFile] = File(...)
         safe_name = upload_file.filename or f"upload_{datetime.utcnow().timestamp():.0f}.bin"
         target = UPLOADS_DIR / safe_name
         content = await upload_file.read()
+        _validate_upload_payload(safe_name, content)
+        _run_antivirus_placeholder(safe_name, content)
         target.write_bytes(content)
 
-        parsed_text = _extract_text(target)
-        text_metrics = _extract_metrics(parsed_text)
-        table_metrics: dict[str, int] = {}
-        if target.suffix.lower() == ".pdf":
-            try:
-                table_metrics = _extract_financials_from_pdf_tables(target)
-            except Exception as table_error:  # noqa: BLE001
-                logger.exception("Table parsing failed for %s: %s", target.name, table_error)
-        elif target.suffix.lower() == ".csv":
-            table_metrics = _extract_financials_from_csv(target)
-        else:
-            table_metrics = _extract_financials_from_text_table(parsed_text)
+        try:
+            parsed_text, ocr_quality = _extract_text_with_ocr_fallback(target)
+            text_metrics, text_provenance = _extract_metrics(parsed_text, safe_name)
+            table_metrics: dict[str, int] = {}
+            table_provenance: dict[str, dict[str, Any]] = {}
+            table_quality: dict[str, Any] = {
+                "table_rows_total": 0,
+                "table_rows_with_numeric_values": 0,
+                "table_rows_with_metric_matches": 0,
+                "table_confidence": 0.0,
+                "tables_examined": 0,
+            }
+            if target.suffix.lower() == ".pdf":
+                table_metrics, table_provenance, table_quality = _extract_financials_from_pdf_tables(target)
+            elif target.suffix.lower() == ".csv":
+                table_metrics, table_provenance, table_quality = _extract_financials_from_csv(target)
+            else:
+                table_metrics, table_provenance, table_quality = _extract_financials_from_text_table(parsed_text, safe_name)
+        except Exception as extraction_error:  # noqa: BLE001
+            logger.exception("Extraction failed for %s", target.name)
+            raise HTTPException(status_code=400, detail=f"Failed to extract metrics from '{safe_name}': {extraction_error}") from extraction_error
 
-        metrics = _merge_metrics(table_metrics, text_metrics)
+        metrics, metric_provenance = _merge_metrics(table_metrics, text_metrics, table_provenance, text_provenance)
+        extraction_quality = _compute_extraction_quality(parsed_text, table_quality, ocr_quality)
         logger.debug("Metrics after merge (%s): %s", target.name, metrics)
 
         schema_detected_fields = _extract_detected_schema_fields(parsed_text, metrics)
@@ -940,6 +1223,7 @@ async def upload(entity_id: str = Form(...), files: list[UploadFile] = File(...)
                 "size_bytes": len(content),
                 "classification": classification_payload,
                 "schema_detected_fields": schema_detected_fields,
+                "extraction_quality": extraction_quality,
             }
         )
         extracted_data.append(
@@ -949,29 +1233,44 @@ async def upload(entity_id: str = Form(...), files: list[UploadFile] = File(...)
                 "char_count": len(parsed_text),
                 "detected_sections": ["balance_sheet", "pnl", "cashflow"],
                 "metrics": metrics,
+                "metric_provenance": metric_provenance,
+                "extraction_quality": extraction_quality,
                 "classification": classification_payload,
                 "schema_detected_fields": schema_detected_fields,
             }
         )
 
     analysis = _build_analysis(extracted_data)
+    extraction_quality_summary = _summarize_extraction_quality(extracted_data)
     state["uploaded_files"] = uploaded_files
     state["extracted_data"] = extracted_data
     state["analysis"] = analysis
     state["current_entity_id"] = resolved_entity_id
+    state.setdefault("runs", []).append(
+        {
+            "run_id": f"run_{uuid4().hex[:10]}",
+            "entity_id": resolved_entity_id,
+            "timestamp": datetime.utcnow().isoformat() + "Z",
+            "files": len(files),
+            "quality": extraction_quality_summary,
+        }
+    )
 
     entity_bucket["uploaded_files"] = uploaded_files
     entity_bucket["extracted_data"] = extracted_data
     entity_bucket["analysis"] = analysis
+    entity_bucket["extraction_quality_summary"] = extraction_quality_summary
     entity_bucket["classifications"] = [item.get("classification", {}) for item in uploaded_files]
     schema_payload = _build_schema_mapping_payload(all_detected_fields, schema_definition=_get_entity_schema_definition(entity_bucket))
     entity_bucket["schema_mapping"] = schema_payload
+    _persist_state()
 
     return {
         "entity_id": resolved_entity_id,
         "uploaded_files": uploaded_files,
         "extracted_data": extracted_data,
         "analysis": analysis,
+        "extraction_quality_summary": extraction_quality_summary,
         "classifications": entity_bucket["classifications"],
         "schema_mapping": schema_payload,
     }
@@ -991,6 +1290,9 @@ def analyze(entity_id: str | None = None) -> dict[str, Any]:
     if resolved_entity_id:
         entity_bucket["analysis"] = analysis
         state["current_entity_id"] = resolved_entity_id
+        entity_bucket["extraction_quality_summary"] = _summarize_extraction_quality(extracted_data)
+
+    _persist_state()
 
     return {"entity_id": resolved_entity_id, "analysis": analysis, "extracted_data": extracted_data}
 
@@ -1005,6 +1307,7 @@ def results(entity_id: str | None = None) -> dict[str, Any]:
             "uploaded_files": entity_bucket.get("uploaded_files", []),
             "extracted_data": entity_bucket.get("extracted_data", []),
             "analysis": entity_bucket.get("analysis"),
+            "extraction_quality_summary": entity_bucket.get("extraction_quality_summary"),
             "research": entity_bucket.get("research"),
             "research_history": entity_bucket.get("research_history", []),
             "schema_mapping": entity_bucket.get("schema_mapping"),
@@ -1015,6 +1318,7 @@ def results(entity_id: str | None = None) -> dict[str, Any]:
         "uploaded_files": state.get("uploaded_files", []),
         "extracted_data": state.get("extracted_data", []),
         "analysis": state.get("analysis"),
+        "extraction_quality_summary": _summarize_extraction_quality(state.get("extracted_data", [])),
         "research": state.get("research"),
         "research_history": [],
         "schema_mapping": None,
@@ -1024,7 +1328,7 @@ def results(entity_id: str | None = None) -> dict[str, Any]:
 @app.post("/research")
 def research(payload: ResearchRequest) -> dict[str, Any]:
     resolved_entity_id = _resolve_entity_id(payload.entity_id)
-    intelligence = run_secondary_research(
+    intelligence = _run_secondary_research_with_retry(
         company_name=payload.company_name,
         promoter_name=payload.promoter_name,
     )
@@ -1047,6 +1351,7 @@ def research(payload: ResearchRequest) -> dict[str, Any]:
         state["current_entity_id"] = resolved_entity_id
 
     state["research"] = intelligence
+    _persist_state()
     return {
         "entity_id": resolved_entity_id,
         "financial_analysis": state.get("analysis") or {},
@@ -1147,6 +1452,7 @@ def risk_score(payload: RiskScoreRequest) -> dict[str, Any]:
     existing_deals = [deal for deal in existing_deals if str(deal.get("company_name", "")).lower() != payload.company_name.lower()]
     existing_deals.append(decision)
     state["deals"] = existing_deals
+    _persist_state()
 
     return decision
 

@@ -88,7 +88,7 @@ cd backend
 python -m venv ..\.venv
 ..\.venv\Scripts\Activate.ps1
 pip install --upgrade pip
-pip install fastapi uvicorn pandas pdfplumber pypdf python-multipart
+pip install -r requirements.txt
 ```
 
 Start backend:
@@ -96,6 +96,13 @@ Start backend:
 ```powershell
 cd backend
 ..\.venv\Scripts\python.exe -m uvicorn app.main:app --host 0.0.0.0 --port 8000
+```
+
+Run backend tests:
+
+```powershell
+cd backend
+..\.venv\Scripts\python.exe -m pytest -q tests
 ```
 
 Backend docs:
