@@ -73,6 +73,7 @@ DOC_TYPES = [
     "Annual Report",
     "Portfolio Cuts / Performance Data",
 ]
+REQUIRED_DOC_TYPES = set(DOC_TYPES)
 
 DEFAULT_SCHEMA_FIELDS: list[dict[str, str]] = [
     {"key": "revenue", "label": "Revenue"},
@@ -147,6 +148,7 @@ class CopilotRequest(BaseModel):
 class SchemaMappingRequest(BaseModel):
     entity_id: str
     mappings: list[dict[str, Any]] = Field(default_factory=list)
+    schema_definition: list[dict[str, str]] = Field(default_factory=list)
 
 
 def _resolve_entity_id(entity_id: str | None = None) -> str | None:
@@ -166,11 +168,55 @@ def _get_entity_bucket(entity_id: str) -> dict[str, Any]:
     return entity_bucket
 
 
-def _schema_key_for_label(label: str) -> str | None:
-    for field in DEFAULT_SCHEMA_FIELDS:
+def _normalize_schema_key(value: str) -> str:
+    key = re.sub(r"[^a-z0-9]+", "_", (value or "").strip().lower()).strip("_")
+    return key or "field"
+
+
+def _normalize_schema_definition(schema_definition: list[dict[str, Any]] | None) -> list[dict[str, str]]:
+    raw_fields = schema_definition if isinstance(schema_definition, list) and schema_definition else DEFAULT_SCHEMA_FIELDS
+
+    normalized_fields: list[dict[str, str]] = []
+    used_keys: set[str] = set()
+    used_labels: set[str] = set()
+
+    for item in raw_fields:
+        if not isinstance(item, dict):
+            continue
+
+        label = str(item.get("label") or "").strip()
+        if not label:
+            continue
+
+        requested_key = str(item.get("key") or "").strip()
+        key = _normalize_schema_key(requested_key or label)
+
+        if key in used_keys:
+            suffix = 2
+            while f"{key}_{suffix}" in used_keys:
+                suffix += 1
+            key = f"{key}_{suffix}"
+
+        if label in used_labels:
+            continue
+
+        normalized_fields.append({"key": key, "label": label})
+        used_keys.add(key)
+        used_labels.add(label)
+
+    return normalized_fields or [dict(field) for field in DEFAULT_SCHEMA_FIELDS]
+
+
+def _schema_key_for_label(label: str, schema_definition: list[dict[str, str]]) -> str | None:
+    for field in schema_definition:
         if field["label"] == label:
             return field["key"]
     return None
+
+
+def _get_entity_schema_definition(entity_bucket: dict[str, Any]) -> list[dict[str, str]]:
+    existing = (entity_bucket.get("schema_mapping") or {}).get("schema_definition")
+    return _normalize_schema_definition(existing)
 
 
 def _extract_value_by_alias(text: str, aliases: list[str]) -> tuple[str, float] | None:
@@ -210,13 +256,14 @@ def _extract_detected_schema_fields(text: str, metrics: dict[str, float]) -> lis
     return detected_fields
 
 
-def _predict_schema_label(detected_field: str) -> str:
+def _predict_schema_label(detected_field: str, schema_definition: list[dict[str, str]]) -> str:
     d = detected_field.lower()
-    best_label = "Revenue"
+    default_label = schema_definition[0]["label"] if schema_definition else "Revenue"
+    best_label = default_label
     best_score = -1
     for schema_label, aliases in SCHEMA_ALIAS_MAP.items():
         score = sum(1 for alias in aliases if alias in d)
-        if score > best_score:
+        if score > best_score and any(field["label"] == schema_label for field in schema_definition):
             best_score = score
             best_label = schema_label
     return best_label
@@ -225,17 +272,23 @@ def _predict_schema_label(detected_field: str) -> str:
 def _build_schema_mapping_payload(
     detected_fields: list[dict[str, Any]],
     manual_mapping_by_field: dict[str, str] | None = None,
+    schema_definition: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     manual_mapping_by_field = manual_mapping_by_field or {}
+    normalized_schema_definition = _normalize_schema_definition(schema_definition)
     mappings: list[dict[str, Any]] = []
-    structured_output: dict[str, float] = {field["key"]: 0.0 for field in DEFAULT_SCHEMA_FIELDS}
+    structured_output: dict[str, float] = {field["key"]: 0.0 for field in normalized_schema_definition}
 
     for detected in detected_fields:
         detected_field = str(detected.get("detected_field", ""))
         value = float(detected.get("value", 0.0) or 0.0)
 
-        mapped_label = manual_mapping_by_field.get(detected_field) or _predict_schema_label(detected_field)
-        mapped_key = _schema_key_for_label(mapped_label)
+        mapped_label = manual_mapping_by_field.get(detected_field) or _predict_schema_label(detected_field, normalized_schema_definition)
+        mapped_key = _schema_key_for_label(mapped_label, normalized_schema_definition)
+
+        if not mapped_key and normalized_schema_definition:
+            mapped_label = normalized_schema_definition[0]["label"]
+            mapped_key = normalized_schema_definition[0]["key"]
 
         if mapped_key:
             structured_output[mapped_key] = round(structured_output.get(mapped_key, 0.0) + value, 2)
@@ -249,7 +302,7 @@ def _build_schema_mapping_payload(
         )
 
     return {
-        "schema_definition": DEFAULT_SCHEMA_FIELDS,
+        "schema_definition": normalized_schema_definition,
         "mappings": mappings,
         "structured_output": structured_output,
     }
@@ -697,11 +750,7 @@ def entity_onboard(payload: EntityOnboardRequest) -> dict[str, Any]:
         "research": None,
         "research_history": [],
         "classifications": [],
-        "schema_mapping": {
-            "schema_definition": DEFAULT_SCHEMA_FIELDS,
-            "mappings": [],
-            "structured_output": {field["key"]: 0.0 for field in DEFAULT_SCHEMA_FIELDS},
-        },
+        "schema_mapping": _build_schema_mapping_payload(detected_fields=[], schema_definition=DEFAULT_SCHEMA_FIELDS),
     }
 
     entities = state.setdefault("entities", {})
@@ -716,8 +765,16 @@ def entity_onboard(payload: EntityOnboardRequest) -> dict[str, Any]:
 
 
 @app.get("/schema-definition")
-def schema_definition() -> dict[str, Any]:
-    return {"schema_definition": DEFAULT_SCHEMA_FIELDS}
+def schema_definition(entity_id: str | None = None) -> dict[str, Any]:
+    resolved_entity_id = _resolve_entity_id(entity_id)
+    if not resolved_entity_id:
+        return {"schema_definition": DEFAULT_SCHEMA_FIELDS}
+
+    entity_bucket = _get_entity_bucket(resolved_entity_id)
+    return {
+        "entity_id": resolved_entity_id,
+        "schema_definition": _get_entity_schema_definition(entity_bucket),
+    }
 
 
 @app.post("/schema-mapping/update")
@@ -737,7 +794,9 @@ def update_schema_mapping(payload: SchemaMappingRequest) -> dict[str, Any]:
         for item in payload.mappings
         if item.get("detected_field") and item.get("system_field")
     }
-    schema_payload = _build_schema_mapping_payload(detected_fields, manual_map)
+    existing_schema_definition = _get_entity_schema_definition(entity_bucket)
+    next_schema_definition = payload.schema_definition if payload.schema_definition else existing_schema_definition
+    schema_payload = _build_schema_mapping_payload(detected_fields, manual_map, next_schema_definition)
 
     entity_bucket["schema_mapping"] = schema_payload
     state["current_entity_id"] = resolved_entity_id
@@ -809,6 +868,27 @@ async def upload(entity_id: str = Form(...), files: list[UploadFile] = File(...)
             raise HTTPException(status_code=400, detail=f"Invalid classifications payload: {error}") from error
 
     class_map = {str(item.get("file_name", "")): item for item in parsed_classifications}
+
+    approved_classifications = [item for item in parsed_classifications if bool(item.get("approved", False))]
+    approved_doc_types = {
+        str(item.get("detected_type") or item.get("predicted_type") or "").strip()
+        for item in approved_classifications
+        if str(item.get("detected_type") or item.get("predicted_type") or "").strip()
+    }
+    missing_required_doc_types = sorted(REQUIRED_DOC_TYPES - approved_doc_types)
+    if missing_required_doc_types:
+        raise HTTPException(
+            status_code=400,
+            detail=f"All 5 required document types must be uploaded and approved. Missing: {', '.join(missing_required_doc_types)}",
+        )
+
+    uploaded_filenames = {str(upload_file.filename or "") for upload_file in files}
+    missing_approvals_for_files = sorted(name for name in uploaded_filenames if name and name not in {str(item.get('file_name', '')) for item in approved_classifications})
+    if missing_approvals_for_files:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Each uploaded file must have an approved classification. Missing approvals for: {', '.join(missing_approvals_for_files)}",
+        )
 
     uploaded_files: list[dict[str, Any]] = []
     extracted_data: list[dict[str, Any]] = []
@@ -884,7 +964,7 @@ async def upload(entity_id: str = Form(...), files: list[UploadFile] = File(...)
     entity_bucket["extracted_data"] = extracted_data
     entity_bucket["analysis"] = analysis
     entity_bucket["classifications"] = [item.get("classification", {}) for item in uploaded_files]
-    schema_payload = _build_schema_mapping_payload(all_detected_fields)
+    schema_payload = _build_schema_mapping_payload(all_detected_fields, schema_definition=_get_entity_schema_definition(entity_bucket))
     entity_bucket["schema_mapping"] = schema_payload
 
     return {

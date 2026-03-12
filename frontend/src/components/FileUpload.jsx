@@ -30,6 +30,7 @@ export default function FileUpload({
   isUploading,
   isProcessing,
   isClassifying,
+  requiredDocTypes = DOC_TYPES,
 }) {
   const { getRootProps, getInputProps, isDragActive, fileRejections } = useDropzone({
     accept: ACCEPTED_FILE_TYPES,
@@ -41,7 +42,14 @@ export default function FileUpload({
 
   const hasFiles = files.length > 0
   const hasClassifications = Array.isArray(classifications) && classifications.length > 0
-  const allApproved = hasClassifications && classifications.every((item) => item.approved)
+  const approvedDocTypes = new Set(
+    (classifications || [])
+      .filter((item) => item.approved)
+      .map((item) => item.detected_type || item.predicted_type)
+      .filter(Boolean)
+  )
+  const missingRequiredTypes = (requiredDocTypes || []).filter((docType) => !approvedDocTypes.has(docType))
+  const allApproved = hasClassifications && classifications.every((item) => item.approved) && missingRequiredTypes.length === 0
 
   const dropzoneClasses = useMemo(() => {
     const base =
@@ -85,6 +93,15 @@ export default function FileUpload({
       {hasClassifications && (
         <div className="rounded-xl bg-white p-4 shadow-sm ring-1 ring-slate-200">
           <h3 className="mb-3 text-sm font-bold uppercase tracking-wide text-slate-500">Classification Results</h3>
+          {missingRequiredTypes.length > 0 ? (
+            <p className="mb-3 rounded-lg bg-amber-100 px-3 py-2 text-xs text-amber-900">
+              Missing required types: {missingRequiredTypes.join(', ')}
+            </p>
+          ) : (
+            <p className="mb-3 rounded-lg bg-emerald-100 px-3 py-2 text-xs text-emerald-900">
+              All required document categories are covered.
+            </p>
+          )}
           <div className="space-y-3">
             {classifications.map((item) => (
               <div key={item.file_name} className="rounded-lg border border-slate-200 bg-slate-50 p-3">
@@ -139,14 +156,20 @@ export default function FileUpload({
           type="button"
           onClick={onUpload}
           disabled={!hasFiles || !allApproved || isUploading || isProcessing || isClassifying}
-          className="inline-flex items-center rounded-xl bg-gradient-to-r from-blue-600 via-purple-600 to-emerald-500 px-5 py-2.5 text-sm font-semibold text-white transition hover:scale-[1.03] disabled:cursor-not-allowed disabled:opacity-60"
+          className="inline-flex items-center rounded-xl bg-linear-to-r from-blue-600 via-purple-600 to-emerald-500 px-5 py-2.5 text-sm font-semibold text-white transition hover:scale-[1.03] disabled:cursor-not-allowed disabled:opacity-60"
         >
           {isUploading ? 'Uploading files...' : isProcessing ? 'Processing...' : 'Upload and Analyze'}
         </button>
         {(isUploading || isProcessing || isClassifying) && (
           <span className="text-sm font-medium text-slate-600">AI processing in progress...</span>
         )}
-        {hasFiles && !allApproved && <span className="text-sm font-medium text-amber-700">Approve classifications before upload.</span>}
+        {hasFiles && !allApproved && (
+          <span className="text-sm font-medium text-amber-700">
+            {missingRequiredTypes.length > 0
+              ? `Approve classifications and include all 5 required document types. Missing: ${missingRequiredTypes.join(', ')}`
+              : 'Approve classifications before upload.'}
+          </span>
+        )}
       </div>
     </div>
   )

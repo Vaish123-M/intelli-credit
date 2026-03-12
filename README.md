@@ -116,6 +116,21 @@ Frontend app:
 
 - `http://localhost:5173`
 
+## Hosted Deployment (Judge Access)
+
+Add your public links below before submission so the app is accessible without VPN:
+
+- Frontend URL: `https://<your-frontend-domain>`
+- Backend API URL: `https://<your-backend-domain>`
+- API Docs URL: `https://<your-backend-domain>/docs`
+
+Deployment readiness checklist:
+
+- Backend CORS allows your frontend domain.
+- Frontend `VITE_API_BASE_URL` points to the deployed backend URL.
+- Health check endpoint responds on `/`.
+- Report downloads work from `/downloads/{filename}`.
+
 ## Environment Configuration
 
 Frontend uses `VITE_API_BASE_URL` when present. If not provided, it auto-tries common local backend URLs on port 8000.

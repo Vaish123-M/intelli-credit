@@ -41,6 +41,14 @@ const WORKFLOW_STEPS = [
   { id: '05', label: 'Generate CAM report', icon: '📝', detail: 'Create downloadable credit memo output' },
 ]
 
+const REQUIRED_DOC_TYPES = [
+  'ALM (Asset Liability Management)',
+  'Shareholding Pattern',
+  'Borrowing Profile',
+  'Annual Report',
+  'Portfolio Cuts / Performance Data',
+]
+
 function RevealSection({ children, className = '', delay = 0 }) {
   const { ref, controls } = useRevealOnScroll()
 
@@ -297,6 +305,18 @@ export default function Home() {
       return
     }
 
+    const approvedDocTypes = new Set(
+      classifications
+        .filter((item) => item.approved)
+        .map((item) => item.detected_type || item.predicted_type)
+        .filter(Boolean)
+    )
+    const missingDocTypes = REQUIRED_DOC_TYPES.filter((docType) => !approvedDocTypes.has(docType))
+    if (missingDocTypes.length > 0) {
+      setError(`All 5 required document types must be approved before upload. Missing: ${missingDocTypes.join(', ')}`)
+      return
+    }
+
     setError('')
     setSuccess('')
     setIsUploading(true)
@@ -390,6 +410,27 @@ export default function Home() {
     })
   }
 
+  const handleSchemaDefinitionChange = (schemaDefinition) => {
+    setSchemaMapping((current) => {
+      if (!current) return current
+
+      const validLabels = new Set((schemaDefinition || []).map((field) => field.label))
+      const fallbackLabel = (schemaDefinition || [])[0]?.label || ''
+      const nextMappings = (current.mappings || []).map((item) => {
+        if (validLabels.has(item.system_field)) {
+          return item
+        }
+        return { ...item, system_field: fallbackLabel }
+      })
+
+      return {
+        ...current,
+        schema_definition: schemaDefinition || [],
+        mappings: nextMappings,
+      }
+    })
+  }
+
   const handleSchemaMappingSave = async () => {
     if (!entityId || !schemaMapping?.mappings) {
       return
@@ -398,7 +439,11 @@ export default function Home() {
     setIsSavingSchema(true)
     setError('')
     try {
-      const payload = await updateSchemaMapping({ entityId, mappings: schemaMapping.mappings })
+      const payload = await updateSchemaMapping({
+        entityId,
+        mappings: schemaMapping.mappings,
+        schemaDefinition: schemaMapping.schema_definition || [],
+      })
       setSchemaMapping(payload)
       setSuccess('Schema mapping saved successfully.')
     } catch (mappingError) {
@@ -540,6 +585,7 @@ export default function Home() {
               onFilesSelected={handleFilesSelected}
               onClassify={handleClassify}
               classifications={classifications}
+              requiredDocTypes={REQUIRED_DOC_TYPES}
               onClassificationChange={handleClassificationEdit}
               onClassificationApproval={handleClassificationApproval}
               onUpload={handleUpload}
@@ -604,6 +650,7 @@ export default function Home() {
             <SchemaMappingEditor
               schemaMapping={schemaMapping}
               onMappingChange={handleSchemaMappingChange}
+              onSchemaDefinitionChange={handleSchemaDefinitionChange}
               onSaveMapping={handleSchemaMappingSave}
               isSaving={isSavingSchema}
               disabled={!entityId || isUploading || isProcessing}

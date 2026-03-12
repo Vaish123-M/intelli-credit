@@ -86,7 +86,7 @@ export async function getSchemaDefinition() {
   return requestJson('/schema-definition')
 }
 
-export async function updateSchemaMapping({ entityId, mappings }) {
+export async function updateSchemaMapping({ entityId, mappings, schemaDefinition }) {
   return requestJson('/schema-mapping/update', {
     method: 'POST',
     headers: {
@@ -95,6 +95,7 @@ export async function updateSchemaMapping({ entityId, mappings }) {
     body: JSON.stringify({
       entity_id: entityId,
       mappings: mappings || [],
+      schema_definition: schemaDefinition || [],
     }),
   })
 }
