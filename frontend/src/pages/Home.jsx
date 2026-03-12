@@ -403,19 +403,18 @@ export default function Home() {
     setError('')
     setSuccess('')
     setIsUploading(true)
-    setIsProcessing(true)
 
     try {
+      setIsUploading(true)
+      setIsProcessing(false)
       const uploadResult = await uploadFiles(selectedFiles, entityId, classifications)
+      setIsUploading(false)
+      setIsProcessing(true)
       setUploadedFiles(uploadResult.uploaded_files || [])
       setExtractedData(uploadResult.extracted_data || [])
       setAnalysis(uploadResult.analysis || null)
       setSchemaMapping(uploadResult.schema_mapping || null)
-      setSuccess('Files uploaded and credit analysis completed successfully.')
-
-      if (companyName.trim()) {
-        await handleResearch({ silent: true })
-      }
+      setSuccess('Files uploaded and financial analysis completed. Run External Research next to continue.')
     } catch (uploadError) {
       setError(uploadError.message || 'Upload failed')
     } finally {
@@ -751,13 +750,16 @@ export default function Home() {
             </button>
           </div>
 
-          {statusLabel && <p className="mt-4 text-sm font-medium text-emerald-700">AI analyzing financial data... 🤖 {statusLabel}</p>}
-          {(isClassifying || isProcessing || isResearching || isScoring || isGeneratingCam) && (
+          {(isClassifying || isUploading || isProcessing || isResearching || isScoring || isGeneratingCam || isGeneratingFinalReport) && (
             <div className="mt-3 space-y-2 text-sm text-slate-700">
               <AILoader
                 label={
                   isClassifying
                     ? 'Reading file names, keywords, and table patterns for document classification...'
+                    : isUploading
+                    ? 'Uploading files to backend — please wait...'
+                    : isProcessing
+                    ? 'Extracting financial metrics from documents — almost done...'
                     : isGeneratingFinalReport
                     ? 'Compiling company overview, financials, risk, research, and SWOT into final PDF report...'
                     : isGeneratingCam
