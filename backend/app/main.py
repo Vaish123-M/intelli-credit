@@ -23,6 +23,18 @@ from app.services.cam import generate_final_report_pdf
 from app.services.ml import build_credit_recommendation, generate_swot_analysis
 from app.services.research import run_secondary_research
 
+try:
+    import anthropic
+    ANTHROPIC_AVAILABLE = True
+except ImportError:
+    ANTHROPIC_AVAILABLE = False
+
+try:
+    import openai
+    OPENAI_AVAILABLE = True
+except ImportError:
+    OPENAI_AVAILABLE = False
+
 APP_ROOT = Path(__file__).resolve().parent.parent
 DOWNLOADS_DIR = APP_ROOT / "downloads"
 UPLOADS_DIR = APP_ROOT / "uploads"
@@ -1595,52 +1607,312 @@ def dashboard_deals() -> list[dict[str, Any]]:
 @app.post("/copilot/ask")
 def copilot_ask(payload: CopilotRequest) -> dict[str, str]:
     prompt = payload.question.strip() or "No question provided"
-    return {"answer": f"Copilot insight: '{prompt}' mapped to uploaded credit signals."}
+    
+    # Build context from current entity data
+    context_parts = []
+    resolved_entity_id = _resolve_entity_id(None)
+    if resolved_entity_id:
+        try:
+            entity_bucket = _get_entity_bucket(resolved_entity_id)
+            analysis = entity_bucket.get("analysis") or {}
+            research = entity_bucket.get("research") or {}
+            decision = entity_bucket.get("decision") or {}
+            
+            # Add financial metrics to context
+            if analysis:
+                context_parts.append("Financial Analysis:")
+                for key, value in analysis.items():
+                    if key not in ["risk_flags"] and value is not None:
+                        context_parts.append(f"  {key}: {value}")
+            
+            # Add risk decision to context
+            if decision:
+                context_parts.append("\nRisk Decision:")
+                context_parts.append(f"  Risk Score: {decision.get('risk_score', 'N/A')}")
+                context_parts.append(f"  Risk Category: {decision.get('risk_category', 'N/A')}")
+                context_parts.append(f"  Loan Decision: {decision.get('loan_decision', 'N/A')}")
+            
+            # Add research insights to context
+            if research:
+                context_parts.append("\nExternal Intelligence:")
+                context_parts.append(f"  Market Sentiment: {research.get('market_sentiment', 'N/A')}")
+                context_parts.append(f"  Legal Risk: {research.get('legal_risk', 'N/A')}")
+                context_parts.append(f"  Sector Outlook: {research.get('sector_outlook', 'N/A')}")
+        except HTTPException:
+            pass  # If entity not found, proceed without context
+    
+    # Also try to get context from global state
+    if not context_parts:
+        global_analysis = state.get("analysis") or {}
+        global_research = state.get("research") or {}
+        global_decision = state.get("decision") or {}
+        
+        if global_analysis:
+            context_parts.append("Financial Analysis:")
+            for key, value in global_analysis.items():
+                if key not in ["risk_flags"] and value is not None:
+                    context_parts.append(f"  {key}: {value}")
+        
+        if global_decision:
+            context_parts.append("\nRisk Decision:")
+            context_parts.append(f"  Risk Score: {global_decision.get('risk_score', 'N/A')}")
+            context_parts.append(f"  Risk Category: {global_decision.get('risk_category', 'N/A')}")
+            context_parts.append(f"  Loan Decision: {global_decision.get('loan_decision', 'N/A')}")
+        
+        if global_research:
+            context_parts.append("\nExternal Intelligence:")
+            context_parts.append(f"  Market Sentiment: {global_research.get('market_sentiment', 'N/A')}")
+            context_parts.append(f"  Legal Risk: {global_research.get('legal_risk', 'N/A')}")
+            context_parts.append(f"  Sector Outlook: {global_research.get('sector_outlook', 'N/A')}")
+    
+    context = "\n".join(context_parts) if context_parts else "No financial data available."
+    
+    # Try Anthropic first, then OpenAI as fallback
+    anthropic_key = os.getenv("ANTHROPIC_API_KEY", "").strip()
+    openai_key = os.getenv("OPENAI_API_KEY", "").strip()
+    
+    # Try Anthropic
+    if anthropic_key and ANTHROPIC_AVAILABLE:
+        try:
+            client = anthropic.Anthropic(api_key=anthropic_key)
+            system_prompt = """You are a credit analysis assistant for Intelli-Credit. 
+You help analysts understand financial data, risk signals, and lending decisions.
+Provide clear, concise, and actionable insights based on the provided context."""
+            
+            user_message = f"""Context from uploaded credit analysis:
+{context}
+
+User Question: {prompt}
+
+Please provide a helpful answer based on the context above."""
+            
+            response = client.messages.create(
+                model="claude-3-haiku-20240307",
+                max_tokens=1024,
+                system=system_prompt,
+                messages=[{"role": "user", "content": user_message}]
+            )
+            
+            answer = response.content[0].text
+            return {"answer": answer}
+        except Exception as e:
+            logger.warning("Anthropic API call failed: %s", e)
+    
+    # Try OpenAI as fallback
+    if openai_key and OPENAI_AVAILABLE:
+        try:
+            client = openai.OpenAI(api_key=openai_key)
+            system_prompt = """You are a credit analysis assistant for Intelli-Credit. 
+You help analysts understand financial data, risk signals, and lending decisions.
+Provide clear, concise, and actionable insights based on the provided context."""
+            
+            user_message = f"""Context from uploaded credit analysis:
+{context}
+
+User Question: {prompt}
+
+Please provide a helpful answer based on the context above."""
+            
+            response = client.chat.completions.create(
+                model="gpt-3.5-turbo",
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_message}
+                ],
+                max_tokens=1024
+            )
+            
+            answer = response.choices[0].message.content
+            return {"answer": answer}
+        except Exception as e:
+            logger.warning("OpenAI API call failed: %s", e)
+    
+    # Fallback to enhanced response with context
+    fallback_answer = f"""Based on the available credit analysis data:
+
+{context}
+
+Your question: {prompt}
+
+Note: LLM integration is not configured. Please set ANTHROPIC_API_KEY or OPENAI_API_KEY environment variable for AI-powered insights."""
+    
+    return {"answer": fallback_answer}
 
 
 @app.get("/portfolio/summary")
 def portfolio_summary() -> dict[str, Any]:
+    entities = state.get("entities", {})
+    deals = list(state.get("deals", []))
+    
+    companies_analyzed = len(deals)
+    
+    # Calculate total exposure from deals
+    total_exposure = 0
+    for deal in deals:
+        loan_limit_str = str(deal.get("loan_limit", "0"))
+        # Parse loan limit string like "INR 1,50,00,000" to number
+        loan_limit_num = float(re.sub(r"[^\d.]", "", loan_limit_str)) if loan_limit_str else 0
+        total_exposure += loan_limit_num
+    
+    # Count risk categories
+    low_risk = sum(1 for deal in deals if deal.get("risk_category") == "Low Risk")
+    medium_risk = sum(1 for deal in deals if deal.get("risk_category") == "Medium Risk")
+    high_risk = sum(1 for deal in deals if deal.get("risk_category") == "High Risk")
+    
     return {
-        "companies_analyzed": 42,
-        "total_exposure": 512_400_000,
-        "low_risk": 20,
-        "medium_risk": 14,
-        "high_risk": 8,
+        "companies_analyzed": companies_analyzed,
+        "total_exposure": total_exposure,
+        "low_risk": low_risk,
+        "medium_risk": medium_risk,
+        "high_risk": high_risk,
     }
 
 
 @app.get("/portfolio/alerts")
 def portfolio_alerts() -> list[str]:
-    return [
-        "Zenith Foods: DSCR dropped below threshold",
-        "Argo Logistics: delayed statutory filing",
-    ]
+    alerts = []
+    entities = state.get("entities", {})
+    deals = list(state.get("deals", []))
+    
+    # High risk threshold (configurable via env var, default 0.6)
+    high_risk_threshold = float(os.getenv("HIGH_RISK_THRESHOLD", "0.6"))
+    
+    # Generate alerts from deals
+    for deal in deals:
+        company_name = deal.get("company_name", "Unknown Company")
+        risk_score = deal.get("risk_score", 0)
+        risk_category = deal.get("risk_category", "")
+        loan_decision = deal.get("loan_decision", "")
+        
+        # High risk alert
+        if risk_score >= high_risk_threshold:
+            alerts.append(f"{company_name}: High risk score ({risk_score:.2f}) - {risk_category}")
+        
+        # Rejection alert
+        if loan_decision == "Reject":
+            alerts.append(f"{company_name}: Loan application rejected - {risk_category}")
+        
+        # Review required alert
+        if loan_decision == "Review":
+            alerts.append(f"{company_name}: Manual review required - {risk_category}")
+    
+    # Generate alerts from entities for missing documents
+    for entity_id, entity_data in entities.items():
+        company_name = entity_data.get("company_name", "Unknown Company")
+        uploaded_files = entity_data.get("uploaded_files", [])
+        classifications = entity_data.get("classifications", [])
+        
+        # Check if all 5 required document types are present
+        approved_types = set()
+        for classification in classifications:
+            if classification.get("approved"):
+                doc_type = classification.get("detected_type") or classification.get("predicted_type")
+                if doc_type:
+                    approved_types.add(doc_type)
+        
+        missing_types = REQUIRED_DOC_TYPES - approved_types
+        if missing_types and uploaded_files:
+            alerts.append(f"{company_name}: Missing required document types: {', '.join(sorted(missing_types))}")
+    
+    # If no alerts, return empty list
+    return alerts
 
 
 @app.get("/portfolio/companies")
 def portfolio_companies() -> list[dict[str, Any]]:
-    return [
-        {"company_name": "Apex Metals", "exposure": 74_500_000, "risk_score": 0.61},
-        {"company_name": "Nova Textiles", "exposure": 58_100_000, "risk_score": 0.29},
-        {"company_name": "Zenith Foods", "exposure": 42_800_000, "risk_score": 0.81},
-    ]
+    companies = []
+    entities = state.get("entities", {})
+    deals = list(state.get("deals", []))
+    
+    # Create a mapping of company name to deal data for risk scores
+    deal_map = {}
+    for deal in deals:
+        company_name = deal.get("company_name", "")
+        if company_name:
+            deal_map[company_name.lower()] = deal
+    
+    # Aggregate company data from entities
+    for entity_id, entity_data in entities.items():
+        company_name = entity_data.get("company_name", "")
+        if not company_name:
+            continue
+        
+        # Get risk score from deals if available
+        deal_data = deal_map.get(company_name.lower())
+        risk_score = deal_data.get("risk_score") if deal_data else None
+        risk_category = deal_data.get("risk_category") if deal_data else None
+        loan_limit = deal_data.get("loan_limit") if deal_data else None
+        interest_rate = deal_data.get("interest_rate") if deal_data else None
+        loan_decision = deal_data.get("loan_decision") if deal_data else None
+        
+        # Parse loan limit to numeric for exposure calculation
+        loan_limit_str = str(loan_limit or "0")
+        exposure = float(re.sub(r"[^\d.]", "", loan_limit_str)) if loan_limit_str else 0
+        
+        companies.append({
+            "company_name": company_name,
+            "entity_id": entity_id,
+            "sector": entity_data.get("sector", "N/A"),
+            "annual_turnover": entity_data.get("annual_turnover"),
+            "loan_type": entity_data.get("loan_type"),
+            "loan_amount": entity_data.get("loan_amount"),
+            "exposure": exposure,
+            "risk_score": risk_score,
+            "risk_category": risk_category,
+            "loan_limit": loan_limit,
+            "interest_rate": interest_rate,
+            "loan_decision": loan_decision,
+            "created_at": entity_data.get("created_at"),
+        })
+    
+    # Sort by company name
+    companies.sort(key=lambda x: x["company_name"])
+    return companies
 
 
 @app.get("/portfolio/high-risk")
 def portfolio_high_risk() -> list[dict[str, Any]]:
-    return [
-        {
-            "company_name": "Zenith Foods",
-            "risk_score": 0.81,
-            "loan_limit": 25_000_00,
-            "interest_rate": "18.50%",
-            "timestamp": "2026-03-10T08:35:00Z",
-        },
-        {
-            "company_name": "Triton Infra",
-            "risk_score": 0.76,
-            "loan_limit": 35_000_00,
-            "interest_rate": "17.25%",
-            "timestamp": "2026-03-10T08:42:00Z",
-        },
-    ]
+    high_risk_companies = []
+    entities = state.get("entities", {})
+    deals = list(state.get("deals", []))
+    
+    # High risk threshold (configurable via env var, default 0.6)
+    high_risk_threshold = float(os.getenv("HIGH_RISK_THRESHOLD", "0.6"))
+    
+    # Create a mapping of company name to deal data
+    deal_map = {}
+    for deal in deals:
+        company_name = deal.get("company_name", "")
+        if company_name:
+            deal_map[company_name.lower()] = deal
+    
+    # Filter companies with risk score above threshold
+    for entity_id, entity_data in entities.items():
+        company_name = entity_data.get("company_name", "")
+        if not company_name:
+            continue
+        
+        # Get risk score from deals
+        deal_data = deal_map.get(company_name.lower())
+        if not deal_data:
+            continue
+        
+        risk_score = deal_data.get("risk_score", 0)
+        
+        # Only include if risk score is above threshold
+        if risk_score >= high_risk_threshold:
+            high_risk_companies.append({
+                "company_name": company_name,
+                "entity_id": entity_id,
+                "risk_score": risk_score,
+                "risk_category": deal_data.get("risk_category"),
+                "loan_limit": deal_data.get("loan_limit"),
+                "interest_rate": deal_data.get("interest_rate"),
+                "loan_decision": deal_data.get("loan_decision"),
+                "timestamp": deal_data.get("timestamp"),
+                "sector": entity_data.get("sector", "N/A"),
+            })
+    
+    # Sort by risk score (highest first)
+    high_risk_companies.sort(key=lambda x: x["risk_score"], reverse=True)
+    return high_risk_companies

@@ -4,7 +4,7 @@ import DashboardStats from '../components/dashboard/DashboardStats'
 import DealsTable from '../components/dashboard/DealsTable'
 import RiskChart from '../components/dashboard/RiskChart'
 import CopilotChat from '../components/dashboard/CopilotChat'
-import { getDashboardDeals } from '../services/api'
+import { getDashboardDeals, getDashboardSummary } from '../services/api'
 
 const AUTO_REFRESH_MS = 10000
 
@@ -31,6 +31,11 @@ export default function CreditDashboard() {
     medium_risk: 0,
     high_risk: 0,
   })
+  const [dashboardStats, setDashboardStats] = useState({
+    avg_risk_score: 0,
+    recommendation: 'N/A',
+    avg_interest: 'N/A',
+  })
   const [deals, setDeals] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -39,10 +44,44 @@ export default function CreditDashboard() {
     setError('')
     setLoading(true)
     try {
-      const nextDeals = await getDashboardDeals()
+      const [nextDeals, summaryData] = await Promise.all([
+        getDashboardDeals(),
+        getDashboardSummary(),
+      ])
       const normalizedDeals = Array.isArray(nextDeals) ? nextDeals : []
       setDeals(normalizedDeals)
       setSummary(buildSummaryFromDeals(normalizedDeals))
+      
+      // Calculate derived stats from deals
+      if (normalizedDeals.length > 0) {
+        const avgRiskScore = normalizedDeals.reduce((sum, deal) => sum + (deal.risk_score || 0), 0) / normalizedDeals.length
+        
+        // Determine recommendation based on most common loan decision
+        const decisionCounts = {}
+        normalizedDeals.forEach(deal => {
+          const decision = deal.loan_decision || 'Unknown'
+          decisionCounts[decision] = (decisionCounts[decision] || 0) + 1
+        })
+        const mostCommonDecision = Object.entries(decisionCounts).sort((a, b) => b[1] - a[1])[0]?.[0] || 'N/A'
+        
+        // Calculate average interest rate
+        const interestRates = normalizedDeals
+          .map(deal => {
+            const rateStr = deal.interest_rate || '0%'
+            const rateNum = parseFloat(rateStr.replace('%', ''))
+            return isNaN(rateNum) ? 0 : rateNum
+          })
+          .filter(rate => rate > 0)
+        const avgInterest = interestRates.length > 0 
+          ? (interestRates.reduce((sum, rate) => sum + rate, 0) / interestRates.length).toFixed(1) + '%'
+          : 'N/A'
+        
+        setDashboardStats({
+          avg_risk_score: avgRiskScore.toFixed(2),
+          recommendation: mostCommonDecision,
+          avg_interest: avgInterest,
+        })
+      }
     } catch (dashboardError) {
       setError(dashboardError.message || 'Failed to load dashboard data')
     } finally {
@@ -74,17 +113,19 @@ export default function CreditDashboard() {
         <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
           <article className="glass-card gradient-outline feature-lift rounded-2xl p-4">
             <p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-600">📉 Avg Risk Score</p>
-            <p className="mt-2 text-2xl font-black text-slate-900">0.42</p>
-            <p className="text-xs text-amber-700">Medium Risk ⚠</p>
+            <p className="mt-2 text-2xl font-black text-slate-900">{dashboardStats.avg_risk_score}</p>
+            <p className="text-xs text-amber-700">
+              {dashboardStats.avg_risk_score > 0.6 ? 'High Risk ⚠' : dashboardStats.avg_risk_score > 0.4 ? 'Medium Risk ⚠' : 'Low Risk ✓'}
+            </p>
           </article>
           <article className="glass-card gradient-outline feature-lift rounded-2xl p-4">
             <p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-600">✅ Recommendation</p>
-            <p className="mt-2 text-2xl font-black text-slate-900">Review Required</p>
+            <p className="mt-2 text-2xl font-black text-slate-900">{dashboardStats.recommendation}</p>
             <p className="text-xs text-purple-700">Policy + AI blended</p>
           </article>
           <article className="glass-card gradient-outline feature-lift rounded-2xl p-4">
             <p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-600">💰 Avg Interest</p>
-            <p className="mt-2 text-2xl font-black text-slate-900">11.8%</p>
+            <p className="mt-2 text-2xl font-black text-slate-900">{dashboardStats.avg_interest}</p>
             <p className="text-xs text-slate-600">Risk-adjusted pricing</p>
           </article>
           <article className="glass-card gradient-outline feature-lift rounded-2xl p-4">
