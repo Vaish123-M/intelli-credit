@@ -7,6 +7,7 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 
 from app.main import app, _default_state, _persist_state, state
+from app.services.audit_store import clear_audit_events
 
 
 REQUIRED_TYPES = [
@@ -32,6 +33,7 @@ def _reset_state() -> None:
     state.clear()
     state.update(_default_state())
     _persist_state()
+    clear_audit_events()
 
 
 def test_full_credit_journey() -> None:
@@ -139,3 +141,38 @@ def test_full_credit_journey() -> None:
     file_name = Path(report_url).name
     download = client.get(f"/downloads/{file_name}")
     assert download.status_code == 200
+
+    audit = client.get("/audit/events", params={"entity_id": entity_id})
+    assert audit.status_code == 200
+    audit_payload = audit.json()
+    event_types = [event.get("event_type") for event in audit_payload.get("events", [])]
+    assert "entity_onboarded" in event_types
+    assert "risk_score_generated" in event_types
+
+
+def test_api_token_protects_sensitive_routes(monkeypatch) -> None:
+    _reset_state()
+    monkeypatch.setenv("API_AUTH_TOKEN", "secret-token")
+
+    client = TestClient(app)
+    payload = {
+        "company_name": "Secured Co",
+        "cin": "L99999",
+        "pan": "AAAAA9999A",
+        "sector": "Technology",
+        "annual_turnover": 1000000,
+        "loan_type": "Term Loan",
+        "loan_amount": 500000,
+        "loan_tenure": "12 months",
+        "interest_rate": 11.0,
+    }
+
+    unauthorized = client.post("/entity-onboard", json=payload)
+    assert unauthorized.status_code == 401
+
+    authorized = client.post(
+        "/entity-onboard",
+        json=payload,
+        headers={"Authorization": "Bearer secret-token"},
+    )
+    assert authorized.status_code == 200

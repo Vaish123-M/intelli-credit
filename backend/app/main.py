@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import mimetypes
 import json
 import os
 import re
@@ -15,11 +16,12 @@ import pandas as pd
 import pdfplumber
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel, Field
 from pypdf import PdfReader
 
 from app.services.cam import generate_final_report_pdf
+from app.services.audit_store import initialize_audit_store, list_audit_events, record_audit_event
 from app.services.ml import build_credit_recommendation, generate_swot_analysis
 from app.services.research import run_secondary_research
 
@@ -43,6 +45,7 @@ STATE_FILE = DATA_DIR / "app_state.json"
 DOWNLOADS_DIR.mkdir(parents=True, exist_ok=True)
 UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
 DATA_DIR.mkdir(parents=True, exist_ok=True)
+initialize_audit_store()
 
 app = FastAPI(title="Intelli-Credit API", version="0.2.0")
 
@@ -66,6 +69,54 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+PUBLIC_PATH_PREFIXES = (
+    "/",
+    "/docs",
+    "/openapi.json",
+    "/redoc",
+    "/health",
+)
+PUBLIC_PATH_EXACT_MATCHES = {
+    "/",
+    "/docs",
+    "/openapi.json",
+    "/redoc",
+}
+
+
+def _required_api_token() -> str:
+    return os.getenv("API_AUTH_TOKEN", "").strip()
+
+
+def _extract_bearer_token(authorization: str | None) -> str:
+    header = (authorization or "").strip()
+    if not header:
+        return ""
+
+    scheme, _, token = header.partition(" ")
+    if scheme.lower() != "bearer":
+        return ""
+    return token.strip()
+
+
+def _is_public_path(path: str) -> bool:
+    return path in PUBLIC_PATH_EXACT_MATCHES or any(path.startswith(prefix) for prefix in PUBLIC_PATH_PREFIXES if prefix not in PUBLIC_PATH_EXACT_MATCHES)
+
+
+@app.middleware("http")
+async def enforce_api_auth(request, call_next):
+    required_token = _required_api_token()
+    if not required_token or request.method == "OPTIONS" or _is_public_path(request.url.path):
+        return await call_next(request)
+
+    provided_token = _extract_bearer_token(request.headers.get("authorization"))
+    api_key = (request.headers.get("x-api-key") or "").strip()
+
+    if provided_token != required_token and api_key != required_token:
+        return JSONResponse(status_code=401, content={"detail": "Unauthorized"})
+
+    return await call_next(request)
 
 def _format_swot_for_report(swot: dict[str, Any]) -> list[str]:
     sections = [
@@ -183,6 +234,22 @@ def _run_antivirus_placeholder(file_name: str, content: bytes) -> None:
     marker = b"EICAR-STANDARD-ANTIVIRUS-TEST-FILE"
     if marker in content:
         raise HTTPException(status_code=400, detail=f"Potential malware signature detected in '{file_name}'")
+
+
+def _sanitize_storage_filename(file_name: str, default_extension: str = ".bin") -> str:
+    original_name = Path(file_name or "upload").name
+    suffix = Path(original_name).suffix.lower()
+    safe_suffix = suffix if suffix in ALLOWED_UPLOAD_EXTENSIONS else default_extension
+    stem = re.sub(r"[^a-zA-Z0-9_-]+", "_", Path(original_name).stem).strip("_-") or "upload"
+    return f"{stem}_{uuid4().hex[:12]}{safe_suffix}"
+
+
+def _resolve_download_path(filename: str) -> Path:
+    candidate = (DOWNLOADS_DIR / Path(filename or "").name).resolve()
+    downloads_root = DOWNLOADS_DIR.resolve()
+    if downloads_root not in candidate.parents and candidate != downloads_root:
+        raise HTTPException(status_code=400, detail="Invalid download path")
+    return candidate
 
 
 state: dict[str, Any] = _load_state()
@@ -1013,6 +1080,11 @@ def root() -> dict[str, str]:
     return {"status": "ok", "service": "intelli-credit-api"}
 
 
+@app.get("/health")
+def health_check() -> dict[str, str]:
+    return {"status": "healthy", "service": "intelli-credit-api", "mode": "demo"}
+
+
 @app.post("/entity-onboard")
 def entity_onboard(payload: EntityOnboardRequest) -> dict[str, Any]:
     entity_id = f"ent_{uuid4().hex[:12]}"
@@ -1041,6 +1113,17 @@ def entity_onboard(payload: EntityOnboardRequest) -> dict[str, Any]:
     entities[entity_id] = entity_record
     state["current_entity_id"] = entity_id
     _persist_state()
+    record_audit_event(
+        "entity_onboarded",
+        {
+            "company_name": payload.company_name,
+            "sector": payload.sector,
+            "loan_type": payload.loan_type,
+            "loan_amount": payload.loan_amount,
+        },
+        entity_id=entity_id,
+        company_name=payload.company_name,
+    )
 
     return {
         "entity_id": entity_id,
@@ -1106,7 +1189,7 @@ async def classify_documents(entity_id: str = Form(...), files: list[UploadFile]
         content = await upload_file.read()
         _validate_upload_payload(safe_name, content)
         _run_antivirus_placeholder(safe_name, content)
-        temp_path = UPLOADS_DIR / f"tmp_{safe_name}"
+        temp_path = UPLOADS_DIR / _sanitize_storage_filename(safe_name)
         temp_path.write_bytes(content)
 
         try:
@@ -1190,7 +1273,8 @@ async def upload(entity_id: str = Form(...), files: list[UploadFile] = File(...)
 
     for upload_file in files:
         safe_name = upload_file.filename or f"upload_{datetime.utcnow().timestamp():.0f}.bin"
-        target = UPLOADS_DIR / safe_name
+        target_name = _sanitize_storage_filename(safe_name)
+        target = UPLOADS_DIR / target_name
         content = await upload_file.read()
         _validate_upload_payload(safe_name, content)
         _run_antivirus_placeholder(safe_name, content)
@@ -1242,6 +1326,7 @@ async def upload(entity_id: str = Form(...), files: list[UploadFile] = File(...)
             {
                 "entity_id": resolved_entity_id,
                 "filename": safe_name,
+                "stored_filename": target_name,
                 "saved_path": str(target),
                 "size_bytes": len(content),
                 "classification": classification_payload,
@@ -1374,6 +1459,18 @@ def research(payload: ResearchRequest) -> dict[str, Any]:
         state["current_entity_id"] = resolved_entity_id
 
     state["research"] = intelligence
+    record_audit_event(
+        "research_completed",
+        {
+            "company_name": payload.company_name,
+            "negative_news_score": intelligence.get("negative_news_score"),
+            "legal_risk": intelligence.get("legal_risk"),
+            "sector_outlook": intelligence.get("sector_outlook"),
+            "market_sentiment": intelligence.get("market_sentiment"),
+        },
+        entity_id=resolved_entity_id,
+        company_name=payload.company_name,
+    )
     _persist_state()
     return {
         "entity_id": resolved_entity_id,
@@ -1476,6 +1573,12 @@ def risk_score(payload: RiskScoreRequest) -> dict[str, Any]:
     existing_deals.append(decision)
     state["deals"] = existing_deals
     _persist_state()
+    record_audit_event(
+        "risk_score_generated",
+        decision,
+        entity_id=_resolve_entity_id(None),
+        company_name=payload.company_name,
+    )
 
     return decision
 
@@ -1569,15 +1672,41 @@ def generate_final_report(payload: FinalReportRequest) -> dict[str, str]:
     except RuntimeError as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
+    record_audit_event(
+        "final_report_generated",
+        {
+            "company_name": payload.company_name,
+            "report_name": report_name,
+            "entity_id": resolved_entity_id,
+        },
+        entity_id=resolved_entity_id,
+        company_name=payload.company_name,
+    )
+
     return {"final_report_url": f"/downloads/{report_name}"}
+
+
+@app.get("/audit/events")
+def audit_events(entity_id: str | None = None, limit: int = 100) -> dict[str, Any]:
+    safe_limit = max(1, min(int(limit or 100), 500))
+    return {
+        "entity_id": entity_id,
+        "events": list_audit_events(entity_id=entity_id, limit=safe_limit),
+    }
 
 
 @app.get("/downloads/{filename}")
 def get_download(filename: str) -> FileResponse:
-    file_path = DOWNLOADS_DIR / filename
+    file_path = _resolve_download_path(filename)
     if not file_path.exists():
         raise HTTPException(status_code=404, detail="Report not found")
-    return FileResponse(path=file_path, filename=file_path.name, media_type="text/plain")
+
+    content_type, _ = mimetypes.guess_type(str(file_path))
+    return FileResponse(
+        path=file_path,
+        filename=file_path.name,
+        media_type=content_type or "application/octet-stream",
+    )
 
 
 @app.get("/dashboard/summary")

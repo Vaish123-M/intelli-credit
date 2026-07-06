@@ -1,4 +1,5 @@
 const ENV_API_BASE_URL = import.meta.env.VITE_API_BASE_URL || ''
+const ENV_API_AUTH_TOKEN = import.meta.env.VITE_API_AUTH_TOKEN || ''
 
 let ACTIVE_API_BASE_URL = ENV_API_BASE_URL || 'http://127.0.0.1:8000'
 
@@ -41,9 +42,21 @@ async function requestJson(path, options = {}) {
   const candidates = buildCandidateUrls()
   let lastError = null
 
+  const requestHeaders = {
+    ...(options.headers || {}),
+  }
+
+  if (ENV_API_AUTH_TOKEN) {
+    requestHeaders.Authorization = `Bearer ${ENV_API_AUTH_TOKEN}`
+  }
+
   for (const baseUrl of candidates) {
     try {
-      const response = await fetch(`${baseUrl}${path}`, options)
+      const finalOptions = {
+        ...options,
+        headers: requestHeaders,
+      }
+      const response = await fetch(`${baseUrl}${path}`, finalOptions)
       ACTIVE_API_BASE_URL = baseUrl
       return await parseResponse(response)
     } catch (error) {
