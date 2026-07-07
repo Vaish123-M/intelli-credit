@@ -176,3 +176,53 @@ def test_api_token_protects_sensitive_routes(monkeypatch) -> None:
         headers={"Authorization": "Bearer secret-token"},
     )
     assert authorized.status_code == 200
+
+
+def test_upload_rejects_missing_required_document_type() -> None:
+    _reset_state()
+    client = TestClient(app)
+
+    onboard_payload = {
+        "company_name": "Incomplete Docs Ltd",
+        "cin": "L54321",
+        "pan": "ABCDE5432F",
+        "sector": "Services",
+        "annual_turnover": 50000000,
+        "loan_type": "Working Capital",
+        "loan_amount": 10000000,
+        "loan_tenure": "24 months",
+        "interest_rate": 13.0,
+    }
+    onboard = client.post("/entity-onboard", json=onboard_payload)
+    assert onboard.status_code == 200
+    entity_id = onboard.json()["entity_id"]
+
+    filenames = [
+        "alm_statement.csv",
+        "shareholding_pattern.csv",
+        "borrowing_profile.csv",
+        "annual_report_financials.csv",
+    ]
+    classify_files = [("files", (name, io.BytesIO(_sample_csv()), "text/csv")) for name in filenames]
+    classify = client.post("/classify-documents", data={"entity_id": entity_id}, files=classify_files)
+    assert classify.status_code == 200
+
+    classifications = [
+        {
+            "file_name": file_name,
+            "predicted_type": doc_type,
+            "detected_type": doc_type,
+            "confidence": 0.95,
+            "approved": True,
+        }
+        for file_name, doc_type in zip(filenames, REQUIRED_TYPES[:-1])
+    ]
+
+    upload_files = [("files", (name, io.BytesIO(_sample_csv()), "text/csv")) for name in filenames]
+    upload = client.post(
+        "/upload",
+        data={"entity_id": entity_id, "classifications": json.dumps(classifications)},
+        files=upload_files,
+    )
+    assert upload.status_code == 400
+    assert "Missing" in upload.json()["detail"]

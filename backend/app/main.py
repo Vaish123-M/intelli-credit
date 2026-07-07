@@ -133,6 +133,13 @@ def _format_swot_for_report(swot: dict[str, Any]) -> list[str]:
         lines.append("")
     return lines
 
+
+MODEL_RISK_CATEGORY = {
+    "Approve": "Low Risk",
+    "Review": "Medium Risk",
+    "Reject": "High Risk",
+}
+
 DOC_TYPES = [
     "ALM (Asset Liability Management)",
     "Shareholding Pattern",
@@ -1484,64 +1491,29 @@ def risk_score(payload: RiskScoreRequest) -> dict[str, Any]:
     analysis = payload.financial_analysis or {}
     intelligence = payload.external_intelligence or {}
 
-    leverage = float(analysis.get("debt_equity_ratio", 1.2) or 1.2)
-    margin = float(analysis.get("ebitda_margin", 0.12) or 0.12)
-    gst_mismatch = bool(analysis.get("gst_mismatch", False))
-    news_risk = float(intelligence.get("negative_news_score", 0.35) or 0.35)
-    litigation = int(intelligence.get("high_risk_cases", 0) or 0)
-    litigation_mentions = float(intelligence.get("litigation_mentions", 0) or 0)
-    sector_growth_signal = float((intelligence.get("research_features") or {}).get("sector_growth_signal", 0.5) or 0.5)
-    market_sentiment_signal = float((intelligence.get("research_features") or {}).get("market_sentiment_signal", 0.5) or 0.5)
-
-    risk = (
-        0.42
-        + (0.18 if leverage > 2 else 0.08)
-        + (0.14 if margin < 0.1 else 0.03)
-        + news_risk * 0.22
-        + (0.09 if gst_mismatch else 0)
-        + min(litigation * 0.06, 0.12)
-        + min(litigation_mentions * 0.02, 0.08)
-        + market_sentiment_signal * 0.08
-        + (0.04 if sector_growth_signal < 0.45 else -0.02)
-    )
-    risk = min(max(risk, 0.05), 0.99)
-
-    if risk >= 0.72:
-        risk_category = "High Risk"
-        loan_limit = "INR 25,00,000"
-        interest_rate = "18.50%"
-    elif risk >= 0.5:
-        risk_category = "Medium Risk"
-        loan_limit = "INR 75,00,000"
-        interest_rate = "14.25%"
-    else:
-        risk_category = "Low Risk"
-        loan_limit = "INR 1,50,00,000"
-        interest_rate = "11.50%"
-
-    factors = list(analysis.get("risk_flags", []))
-    if news_risk > 0.5:
-        factors.append("Adverse media sentiment")
-    if litigation > 0:
-        factors.append("Open high-risk litigation")
-    if litigation_mentions > 0:
-        factors.append("Litigation-related mentions in external research")
-    if sector_growth_signal < 0.45:
-        factors.append("Weak sector growth trend")
-    if market_sentiment_signal >= 0.75:
-        factors.append("Adverse market sentiment")
-    if not factors:
-        factors = ["No major adverse signals"]
-
     recommendation = build_credit_recommendation(
         financial_metrics=analysis,
-        risk_score=risk,
+        risk_score=None,
         secondary_research_signals=intelligence,
     )
     loan_decision = str(recommendation.get("decision") or "Review")
+    risk_score = float(recommendation.get("risk_score") or 0.5)
+    risk_category = str(recommendation.get("risk_category") or MODEL_RISK_CATEGORY.get(loan_decision, "Medium Risk"))
+    loan_limit = str(recommendation.get("recommended_loan_limit") or "INR 75,00,000")
+    interest_rate = str(recommendation.get("recommended_interest_rate") or "14.25%")
+
+    factors = list(analysis.get("risk_flags", []))
+    model_probability = recommendation.get("model_probability")
+    if isinstance(model_probability, (int, float)):
+        if model_probability >= 0.65:
+            factors.append("Model probability indicates elevated risk")
+        elif model_probability <= 0.35:
+            factors.append("Model probability indicates lower risk")
+    if not factors:
+        factors = ["No major adverse signals"]
 
     pre_decision_payload = {
-        "risk_score": round(risk, 4),
+        "risk_score": round(risk_score, 4),
         "risk_category": risk_category,
         "loan_decision": loan_decision,
         "reasoning": recommendation.get("reasoning", []),
@@ -1554,10 +1526,10 @@ def risk_score(payload: RiskScoreRequest) -> dict[str, Any]:
 
     decision = {
         "company_name": payload.company_name,
-        "risk_score": round(risk, 4),
+        "risk_score": round(risk_score, 4),
         "risk_category": risk_category,
-        "loan_limit": recommendation.get("recommended_loan_limit", loan_limit),
-        "interest_rate": recommendation.get("recommended_interest_rate", interest_rate),
+        "loan_limit": loan_limit,
+        "interest_rate": interest_rate,
         "loan_decision": loan_decision,
         "reasoning": recommendation.get("reasoning", []),
         "swot_analysis": swot,
