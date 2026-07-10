@@ -1,102 +1,340 @@
 ﻿# Intelli-Credit
 
-Intelli-Credit is a full-stack AI-assisted corporate credit underwriting application.
+**AI-Powered Corporate Credit Underwriting Platform**
 
-It helps an analyst move from document upload to lending decision through a guided workflow:
+Intelli-Credit is a production-grade full-stack application that automates corporate credit underwriting through AI-assisted document analysis, risk scoring, and portfolio monitoring. Built with enterprise-grade architecture including JWT authentication, rate limiting, containerization, and observability.
 
-1. Upload financial documents.
-2. Extract and analyze financial signals.
-3. Enrich with external intelligence.
-4. Generate risk score and recommendation.
-5. Review portfolio-level risk and exposure.
-6. Export a CAM-style report.
+---
 
-## Core Capabilities
+## 🚀 Features
 
-- Multi-file document upload to FastAPI backend.
-- Financial metric extraction from PDF, CSV, and text-like tables.
-- Rule-based analysis outputs such as leverage, margins, and risk flags.
-- Secondary research engine for external intelligence using News API, SerpAPI, and Google Search API.
-- Risk scoring that returns:
-	- `risk_score`
-	- `risk_category` (`Low Risk` / `Medium Risk` / `High Risk`)
-	- `loan_limit`
-	- `interest_rate`
-	- `decision_status`
-- Portfolio and dashboard monitoring:
-	- Deal summary
-	- Risk distribution
-	- High-risk listing
-- CAM report text generation and download.
-- Copilot Q&A endpoint for contextual credit insights.
+### Core Credit Underwriting
+- **Multi-Document Upload**: Support for PDF, CSV, and text files with drag-and-drop interface
+- **Financial Extraction**: Automated extraction of key financial metrics (revenue, EBITDA, debt, equity, ratios)
+- **Document Classification**: Rule-based classification of 5 required document types (ALM, Shareholding, Borrowing, Annual Report, Portfolio)
+- **Secondary Research**: External intelligence integration via News API, SerpAPI, and Google Custom Search
+- **Risk Scoring**: Weighted risk algorithm combining financial metrics and external signals
+- **Decision Engine**: AI-powered credit recommendations with SWOT analysis
+- **Report Generation**: CAM-style credit assessment reports with PDF export
 
-## Tech Stack
+### Advanced Features
+- **AI Copilot**: Context-aware Q&A powered by Anthropic Claude/OpenAI GPT
+- **Portfolio Analytics**: Real-time risk monitoring, exposure tracking, and alert generation
+- **Dynamic Dashboards**: Interactive visualizations with Recharts and auto-refresh
 
-### Frontend
+### Production-Grade Infrastructure
+- **JWT Authentication**: Role-based access control (Admin, Analyst, Viewer)
+- **Rate Limiting**: API throttling with slowapi to prevent abuse
+- **Docker Containerization**: Multi-container setup with docker-compose
+- **Prometheus Metrics**: Application performance monitoring at `/metrics`
+- **Grafana Dashboards**: Pre-configured visualization for metrics
+- **Structured Logging**: JSON-formatted logs for production debugging
+- **CI/CD Pipeline**: GitHub Actions for automated testing
 
-- React 18 + Vite 5
-- Tailwind CSS 4
-- Framer Motion
-- Recharts
-- react-dropzone
+---
 
-### Backend
+## 🏗️ Architecture
 
-- FastAPI
-- Uvicorn
-- pandas
-- pdfplumber
-- pypdf
+### System Architecture
 
-## Repository Structure
+```
+┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
+│   React 18      │     │   FastAPI       │     │  PostgreSQL     │
+│   Frontend      │────▶│   Backend       │────▶│   Database      │
+│   (Nginx)       │     │   (Uvicorn)     │     │                 │
+└─────────────────┘     └─────────────────┘     └─────────────────┘
+                                │
+                                ▼
+                        ┌─────────────────┐
+                        │     Redis       │
+                        │  (Cache/Queue)  │
+                        └─────────────────┘
+```
 
-```text
+### Technology Stack
+
+#### Frontend
+- **React 18** - UI library with hooks
+- **Vite 5** - Build tool and dev server
+- **Tailwind CSS 4** - Utility-first styling
+- **Framer Motion** - Animations
+- **Recharts** - Data visualization
+- **react-dropzone** - File upload component
+
+#### Backend
+- **FastAPI** - Modern async web framework
+- **Uvicorn** - ASGI server
+- **SQLAlchemy** - ORM for database operations
+- **Alembic** - Database migrations
+- **Pydantic** - Data validation
+- **python-jose** - JWT token handling
+- **passlib** - Password hashing with bcrypt
+- **slowapi** - Rate limiting
+- **prometheus-fastapi-instrumentator** - Metrics collection
+- **pandas** - Data processing
+- **pdfplumber** - PDF table extraction
+- **anthropic/openai** - LLM integration
+
+#### Infrastructure
+- **Docker** - Containerization
+- **docker-compose** - Multi-container orchestration
+- **PostgreSQL 15** - Production database
+- **Redis 7** - Caching and message broker
+- **Prometheus** - Metrics collection
+- **Grafana** - Metrics visualization
+- **GitHub Actions** - CI/CD pipeline
+
+---
+
+## 📁 Repository Structure
+
+```
 intelli-credit/
-	backend/
-		app/
-			main.py
-		uploads/
-		downloads/
-	frontend/
-		src/
-			pages/
-			components/
-			services/
+├── backend/
+│   ├── app/
+│   │   ├── auth/              # JWT authentication & RBAC
+│   │   │   ├── __init__.py
+│   │   │   ├── models.py      # User models
+│   │   │   ├── security.py    # Password hashing
+│   │   │   ├── jwt_handler.py # Token management
+│   │   │   └── dependencies.py # Auth dependencies
+│   │   ├── services/          # Business logic
+│   │   │   ├── cam/           # Report generation
+│   │   │   ├── ml/            # ML models
+│   │   │   ├── research/      # External research
+│   │   │   └── audit_store.py # Audit logging
+│   │   └── main.py            # FastAPI app & endpoints
+│   ├── tests/                 # Test suite
+│   ├── uploads/               # File upload directory
+│   ├── downloads/             # Generated reports
+│   ├── data/                  # Application state
+│   ├── Dockerfile             # Backend container
+│   └── requirements.txt       # Python dependencies
+├── frontend/
+│   ├── src/
+│   │   ├── components/        # React components
+│   │   ├── pages/            # Page components
+│   │   └── services/         # API client
+│   ├── Dockerfile             # Frontend container
+│   ├── nginx.conf             # Nginx configuration
+│   └── package.json           # Node dependencies
+├── .github/workflows/         # CI/CD pipelines
+├── docker-compose.yml         # Multi-container setup
+├── prometheus.yml             # Prometheus config
+├── .env.example               # Environment variables template
+└── README.md                  # This file
 ```
 
-## How the App Works (End-to-End)
+---
 
-1. User uploads files from the Home page.
-2. Backend parses file content and extracts financial metrics.
-3. Backend builds analysis object and stores it in in-memory app state.
-4. User runs research and risk scoring.
-5. Risk decision is appended to `state["deals"]` (one latest entry per company).
-6. Dashboard and portfolio pages fetch from backend APIs and visualize current state.
+## 🚦 Quick Start
 
-## Prerequisites
+### Prerequisites
+- Docker & Docker Compose
+- Python 3.11+ (for local development)
+- Node.js 20+ (for local development)
 
-- Python 3.10+ (tested in this workspace with 3.13)
-- Node.js 18+
-- npm 9+
+### Docker Deployment (Recommended)
 
-## Backend Setup
+1. **Clone the repository**
+```bash
+git clone https://github.com/Vaish123-M/intelli-credit.git
+cd intelli-credit
+```
 
-From repository root (`intelli-credit/`):
+2. **Configure environment variables**
+```bash
+cp .env.example .env
+# Edit .env with your API keys and configuration
+```
 
-```powershell
+3. **Start all services**
+```bash
+docker-compose up -d
+```
+
+4. **Access the application**
+- Frontend: http://localhost
+- Backend API: http://localhost:8000
+- API Docs: http://localhost:8000/docs
+- Prometheus: http://localhost:9090
+- Grafana: http://localhost:3000 (admin/admin)
+
+### Local Development
+
+#### Backend
+```bash
 cd backend
-python -m venv ..\.venv
-..\.venv\Scripts\Activate.ps1
-pip install --upgrade pip
+python -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
 pip install -r requirements.txt
+uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
-Start backend:
+#### Frontend
+```bash
+cd frontend
+npm install
+npm run dev
+```
 
-```powershell
+---
+
+## 🔐 Authentication
+
+The application uses JWT-based authentication with role-based access control.
+
+### User Roles
+- **Admin**: Full access to all endpoints
+- **Analyst**: Can perform credit analysis and view portfolios
+- **Viewer**: Read-only access to dashboards
+
+### API Usage
+
+1. **Register a user**
+```bash
+POST /auth/register
+{
+  "email": "analyst@example.com",
+  "username": "analyst",
+  "password": "securepassword",
+  "role": "analyst"
+}
+```
+
+2. **Login to get token**
+```bash
+POST /auth/login
+Content-Type: application/x-www-form-urlencoded
+username=analyst&password=securepassword
+```
+
+3. **Use token in requests**
+```bash
+Authorization: Bearer <your_jwt_token>
+```
+
+---
+
+## 📊 API Endpoints
+
+### Authentication
+- `POST /auth/register` - Register new user
+- `POST /auth/login` - Login and get JWT token
+- `GET /auth/me` - Get current user info
+
+### Core Workflow
+- `POST /entity-onboard` - Onboard a company entity
+- `POST /classify-documents` - Classify uploaded documents
+- `POST /upload` - Upload and extract financial data
+- `POST /analyze` - Run financial analysis
+- `POST /research` - Run external research
+- `POST /risk-score` - Calculate risk score and decision
+- `POST /generate-cam` - Generate CAM report
+- `POST /generate-final-report` - Generate final PDF report
+
+### AI Features
+- `POST /copilot/ask` - Ask context-aware questions
+
+### Portfolio & Dashboard
+- `GET /dashboard/summary` - Dashboard summary stats
+- `GET /dashboard/deals` - All analyzed deals
+- `GET /portfolio/summary` - Portfolio summary
+- `GET /portfolio/alerts` - Risk alerts
+- `GET /portfolio/companies` - All companies
+- `GET /portfolio/high-risk` - High-risk companies
+
+### Monitoring
+- `GET /metrics` - Prometheus metrics
+- `GET /health` - Health check
+
+---
+
+## 🧪 Testing
+
+Run the test suite:
+```bash
 cd backend
-..\.venv\Scripts\python.exe -m uvicorn app.main:app --host 0.0.0.0 --port 8000
+pytest -q tests
 ```
+
+Run with coverage:
+```bash
+pytest --cov=app tests/
+```
+
+---
+
+## 📈 Monitoring
+
+### Prometheus Metrics
+Access metrics at `http://localhost:8000/metrics`
+
+Key metrics tracked:
+- Request latency
+- Request count by endpoint
+- Error rate
+- Active connections
+
+### Grafana Dashboards
+1. Access Grafana at `http://localhost:3000`
+2. Login with `admin/admin`
+3. Add Prometheus data source: `http://prometheus:9090`
+4. Import pre-configured dashboards
+
+---
+
+## 🔧 Configuration
+
+Key environment variables (see `.env.example`):
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `SECRET_KEY` | JWT signing key | - |
+| `DATABASE_URL` | PostgreSQL connection string | - |
+| `REDIS_URL` | Redis connection string | - |
+| `ANTHROPIC_API_KEY` | Anthropic API key for Copilot | - |
+| `OPENAI_API_KEY` | OpenAI API key (fallback) | - |
+| `HIGH_RISK_THRESHOLD` | Risk score threshold for alerts | 0.6 |
+| `CORS_ORIGINS` | Allowed CORS origins | * |
+
+---
+
+## 🚀 Deployment
+
+### Production Checklist
+- [ ] Change `SECRET_KEY` to a strong random value
+- [ ] Set up production PostgreSQL database
+- [ ] Configure Redis for caching
+- [ ] Add real API keys for external services
+- [ ] Enable HTTPS/TLS
+- [ ] Set up proper logging aggregation
+- [ ] Configure backup strategy for database
+- [ ] Set up monitoring alerts
+
+### Deploy to Render
+The project includes `render.yaml` for easy deployment to Render cloud platform.
+
+### Deploy to AWS/GCP/Azure
+Use the provided Docker images and docker-compose configuration as a template for cloud deployment.
+
+---
+
+## 📝 License
+
+This project is for educational and demonstration purposes.
+
+---
+
+## 👤 Author
+
+Built as a final year computer engineering project to demonstrate full-stack development, AI integration, and production-grade infrastructure.
+
+---
+
+## 🤝 Contributing
+
+This is a portfolio project. For suggestions or improvements, please open an issue or pull request.
 
 Run backend tests:
 

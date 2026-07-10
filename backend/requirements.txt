@@ -9,4 +9,13 @@ pytest
 httpx
 anthropic
 openai
+python-jose[cryptography]
+passlib[bcrypt]
+python-multipart
+slowapi
+sqlalchemy
+psycopg2-binary
+alembic
+redis
+celery
 scikit-learn

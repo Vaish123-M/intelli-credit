@@ -7,23 +7,38 @@ import os
 import re
 import time
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
 import pandas as pd
 import pdfplumber
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, UploadFile, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
+from fastapi.security import OAuth2PasswordRequestForm
 from pydantic import BaseModel, Field
 from pypdf import PdfReader
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
 
 from app.services.cam import generate_final_report_pdf
 from app.services.audit_store import initialize_audit_store, list_audit_events, record_audit_event
 from app.services.ml import build_credit_recommendation, generate_swot_analysis
 from app.services.research import run_secondary_research
+from app.auth import (
+    create_access_token,
+    verify_password,
+    get_password_hash,
+    User,
+    UserCreate,
+    UserInDB,
+    Token,
+    get_current_active_user,
+    require_role,
+    UserRole,
+)
 
 try:
     import anthropic
@@ -47,7 +62,11 @@ UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 initialize_audit_store()
 
-app = FastAPI(title="Intelli-Credit API", version="0.2.0")
+# Rate limiting setup
+limiter = Limiter(key_func=get_remote_address)
+app = FastAPI(title="Intelli-Credit API", version="0.3.0")
+app.state.limiter = limiter
+app.add_exception_handler(429, _rate_limit_exceeded_handler)
 
 logging.basicConfig(level=logging.DEBUG, format="%(asctime)s | %(levelname)s | %(name)s | %(message)s")
 logger = logging.getLogger("intelli_credit.parser")
@@ -1092,7 +1111,85 @@ def health_check() -> dict[str, str]:
     return {"status": "healthy", "service": "intelli-credit-api", "mode": "demo"}
 
 
+# Authentication endpoints
+@app.post("/auth/register", status_code=201)
+@limiter.limit("5/minute")
+async def register(user_data: UserCreate, request: Request) -> UserInDB:
+    """Register a new user."""
+    # Check if user already exists (in-memory for demo, would use DB in production)
+    users = state.setdefault("users", {})
+    
+    if user_data.email in users:
+        raise HTTPException(status_code=400, detail="Email already registered")
+    
+    if user_data.username in [u["username"] for u in users.values()]:
+        raise HTTPException(status_code=400, detail="Username already taken")
+    
+    # Create user with hashed password
+    user_id = f"user_{uuid4().hex[:12]}"
+    hashed_password = get_password_hash(user_data.password)
+    
+    user = UserInDB(
+        id=user_id,
+        email=user_data.email,
+        username=user_data.username,
+        full_name=user_data.full_name,
+        role=user_data.role,
+        is_active=True,
+        created_at=datetime.utcnow(),
+        hashed_password=hashed_password,
+    )
+    
+    users[user_id] = user.model_dump()
+    _persist_state()
+    
+    return user
+
+
+@app.post("/auth/login")
+@limiter.limit("10/minute")
+async def login(form_data: OAuth2PasswordRequestForm = Depends()) -> Token:
+    """Authenticate user and return JWT token."""
+    users = state.get("users", {})
+    
+    # Find user by username or email
+    user = None
+    for u in users.values():
+        if u.get("username") == form_data.username or u.get("email") == form_data.username:
+            user = u
+            break
+    
+    if not user:
+        raise HTTPException(status_code=401, detail="Invalid credentials")
+    
+    if not verify_password(form_data.password, user["hashed_password"]):
+        raise HTTPException(status_code=401, detail="Invalid credentials")
+    
+    if not user.get("is_active", True):
+        raise HTTPException(status_code=403, detail="User account is disabled")
+    
+    # Create access token
+    access_token_expires = timedelta(minutes=30)
+    access_token = create_access_token(
+        data={"sub": user["username"], "role": user["role"]},
+        expires_delta=access_token_expires,
+    )
+    
+    return Token(access_token=access_token, token_type="bearer")
+
+
+@app.get("/auth/me")
+async def get_me(current_user: dict = Depends(get_current_active_user)) -> User:
+    """Get current user information."""
+    users = state.get("users", {})
+    for u in users.values():
+        if u.get("username") == current_user.username:
+            return User(**u)
+    raise HTTPException(status_code=404, detail="User not found")
+
+
 @app.post("/entity-onboard")
+@limiter.limit("20/minute")
 def entity_onboard(payload: EntityOnboardRequest) -> dict[str, Any]:
     entity_id = f"ent_{uuid4().hex[:12]}"
     entity_record = {
@@ -1233,6 +1330,7 @@ async def classify_documents(entity_id: str = Form(...), files: list[UploadFile]
 
 
 @app.post("/upload")
+@limiter.limit("10/minute")
 async def upload(entity_id: str = Form(...), files: list[UploadFile] = File(...), classifications: str | None = Form(None)) -> dict[str, Any]:
     if not files:
         raise HTTPException(status_code=400, detail="No files provided")
@@ -1441,6 +1539,7 @@ def results(entity_id: str | None = None) -> dict[str, Any]:
 
 
 @app.post("/research")
+@limiter.limit("5/minute")
 def research(payload: ResearchRequest) -> dict[str, Any]:
     resolved_entity_id = _resolve_entity_id(payload.entity_id)
     intelligence = _run_secondary_research_with_retry(

@@ -31,5 +31,21 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Run tests
-        run: pytest -q tests
+      - name: Run integration tests
+        run: pytest -q tests/test_api_integration.py
+
+      - name: Run auth tests
+        run: pytest -q tests/test_auth.py
+
+      - name: Run portfolio tests
+        run: pytest -q tests/test_portfolio.py
+
+      - name: Run all tests with coverage
+        run: pytest --cov=app --cov-report=term-missing tests/
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          file: ./backend/coverage.xml
+          flags: backend
+          name: backend-coverage
