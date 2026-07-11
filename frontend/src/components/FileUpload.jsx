@@ -81,8 +81,8 @@ export default function FileUpload({
           <h3 className="mb-2 text-sm font-bold uppercase tracking-wide text-slate-500">Selected files</h3>
           <ul className="space-y-1 text-sm text-slate-700">
             {files.map((file) => (
-              <li key={`${file.name}-${file.lastModified}`} className="flex items-center justify-between">
-                <span className="truncate pr-4">{file.name}</span>
+              <li key={`${file.name}-${file.lastModified}`} className="flex items-center justify-between gap-3">
+                <span className="min-w-0 truncate pr-4">{file.name}</span>
                 <span className="text-slate-500">{(file.size / 1024).toFixed(1)} KB</span>
               </li>
             ))}
@@ -110,7 +110,7 @@ export default function FileUpload({
                   <p className="text-xs font-semibold text-blue-700">Confidence: {formatConfidence(item.confidence)}</p>
                 </div>
 
-                <div className="mt-2 grid gap-3 md:grid-cols-[1fr_auto] md:items-center">
+                <div className="mt-2 grid gap-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-center">
                   <div>
                     <label className="text-xs font-semibold uppercase tracking-[0.08em] text-slate-600">Detected Type</label>
                     <select
@@ -142,12 +142,12 @@ export default function FileUpload({
         </div>
       )}
 
-      <div className="flex flex-wrap items-center gap-3">
+      <div className="responsive-action-row">
         <button
           type="button"
           onClick={onClassify}
           disabled={!hasFiles || isClassifying || isUploading || isProcessing}
-          className="inline-flex items-center rounded-xl border border-blue-300 bg-blue-50 px-5 py-2.5 text-sm font-semibold text-blue-700 transition hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-60"
+          className="inline-flex w-full items-center justify-center rounded-xl border border-blue-300 bg-blue-50 px-5 py-2.5 text-sm font-semibold text-blue-700 transition hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
         >
           {isClassifying ? 'Classifying...' : 'Classify Documents'}
         </button>
@@ -156,7 +156,7 @@ export default function FileUpload({
           type="button"
           onClick={onUpload}
           disabled={!hasFiles || !allApproved || isUploading || isProcessing || isClassifying}
-          className="inline-flex items-center rounded-xl bg-linear-to-r from-blue-600 via-purple-600 to-emerald-500 px-5 py-2.5 text-sm font-semibold text-white transition hover:scale-[1.03] disabled:cursor-not-allowed disabled:opacity-60"
+          className="inline-flex w-full items-center justify-center rounded-xl bg-linear-to-r from-blue-600 via-purple-600 to-emerald-500 px-5 py-2.5 text-sm font-semibold text-white transition hover:scale-[1.03] disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
         >
           {isUploading ? 'Uploading files...' : isProcessing ? 'Processing...' : 'Upload and Analyze'}
         </button>

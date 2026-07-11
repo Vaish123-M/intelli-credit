@@ -110,7 +110,7 @@ export default function CreditDashboard() {
           </p>
         </header>
 
-        <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
           <article className="glass-card gradient-outline feature-lift rounded-2xl p-4">
             <p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-600">📉 Avg Risk Score</p>
             <p className="mt-2 text-2xl font-black text-slate-900">{dashboardStats.avg_risk_score}</p>

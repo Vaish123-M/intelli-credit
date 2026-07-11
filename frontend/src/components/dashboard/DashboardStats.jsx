@@ -46,7 +46,7 @@ function StatCard({ label, value, tone, icon }) {
 
 export default function DashboardStats({ summary }) {
   return (
-    <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+    <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
       <StatCard label="Companies Analyzed" value={summary.companies_analyzed ?? 0} tone="slate" icon="🏦" />
       <StatCard label="Low Risk" value={summary.low_risk ?? 0} tone="green" icon="✅" />
       <StatCard label="Medium Risk" value={summary.medium_risk ?? 0} tone="amber" icon="⚠" />

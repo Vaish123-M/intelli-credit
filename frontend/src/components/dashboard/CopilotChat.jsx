@@ -64,11 +64,11 @@ export default function CopilotChat({ deals }) {
         <span className="rounded-full bg-indigo-100 px-3 py-1 text-xs font-semibold text-indigo-700">Phase 7</span>
       </div>
 
-      <div className="mt-4 grid gap-3 md:grid-cols-[220px,1fr,auto]">
+      <div className="responsive-inline-controls mt-4 md:grid-cols-[220px,1fr,auto]">
         <select
           value={selectedCompany}
           onChange={(event) => setSelectedCompany(event.target.value)}
-          className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 outline-none ring-indigo-200 focus:ring"
+          className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 outline-none ring-indigo-200 focus:ring"
         >
           {deals.length === 0 ? (
             <option value="">No companies available</option>
@@ -86,14 +86,14 @@ export default function CopilotChat({ deals }) {
           value={question}
           onChange={(event) => setQuestion(event.target.value)}
           placeholder="Ask about risk, approval, or key drivers..."
-          className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm text-slate-800 outline-none ring-indigo-200 focus:ring"
+          className="w-full rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm text-slate-800 outline-none ring-indigo-200 focus:ring"
         />
 
         <button
           type="button"
           onClick={handleAsk}
           disabled={isLoading || deals.length === 0}
-          className="rounded-xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-500 disabled:cursor-not-allowed disabled:bg-indigo-300"
+          className="w-full rounded-xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-500 disabled:cursor-not-allowed disabled:bg-indigo-300 md:w-auto"
         >
           {isLoading ? 'Thinking...' : 'Send'}
         </button>
@@ -105,7 +105,7 @@ export default function CopilotChat({ deals }) {
             key={item}
             type="button"
             onClick={() => setQuestion(item)}
-            className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700 hover:bg-slate-200"
+            className="w-full rounded-full bg-slate-100 px-3 py-1 text-left text-xs font-medium text-slate-700 hover:bg-slate-200 sm:w-auto sm:text-center"
           >
             {item}
           </button>

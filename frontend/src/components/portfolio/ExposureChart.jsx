@@ -15,8 +15,8 @@ export default function ExposureChart({ summary }) {
       <h3 className="text-sm font-bold uppercase tracking-[0.12em] text-slate-700">Portfolio Risk Distribution</h3>
       <p className="mt-1 text-xs text-slate-500">Risk spread across all analyzed companies</p>
 
-      <div className="mt-4 grid gap-4 lg:grid-cols-2">
-        <div className="h-52 w-full">
+      <div className="mt-4 grid gap-4 sm:grid-cols-2">
+        <div className="h-44 w-full sm:h-52">
           <ResponsiveContainer width="100%" height="100%">
             <PieChart>
               <Pie data={distribution} dataKey="value" nameKey="name" innerRadius={56} outerRadius={82} stroke="none" paddingAngle={3}>
@@ -29,7 +29,7 @@ export default function ExposureChart({ summary }) {
           </ResponsiveContainer>
         </div>
 
-        <div className="h-52 w-full">
+        <div className="h-44 w-full sm:h-52">
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={distribution} margin={{ top: 12, right: 8, left: -12, bottom: 8 }}>
               <XAxis dataKey="name" tickLine={false} axisLine={false} fontSize={11} />

@@ -56,7 +56,7 @@ export default function AICreditDecision({
         <span className="rounded-full bg-linear-to-r from-purple-600 to-blue-600 px-3 py-1 text-xs font-semibold text-white">ML Risk Engine 🤖</span>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <DecisionCard title="Loan Decision" value={loanDecision} tone={explainTone} />
         <DecisionCard title="Risk Score" value={`${Math.round((decision.risk_score || 0) * 100)}%`} tone={tone} />
         <DecisionCard title="Risk Category" value={decision.risk_category || 'N/A'} tone={tone} />
@@ -64,12 +64,12 @@ export default function AICreditDecision({
         <DecisionCard title="Interest Rate" value={decision.interest_rate || 'N/A'} hint={decision.decision_status || ''} />
       </div>
 
-      <div className="flex flex-wrap justify-end gap-2">
+      <div className="responsive-action-row justify-end">
         <button
           type="button"
           onClick={onGenerateFinalReport}
           disabled={!canGenerateCam || isGeneratingFinalReport}
-          className="rounded-xl bg-linear-to-r from-emerald-600 via-blue-600 to-slate-800 px-4 py-2 text-sm font-semibold text-white shadow-md transition hover:scale-[1.03] disabled:cursor-not-allowed disabled:opacity-70"
+          className="w-full rounded-xl bg-linear-to-r from-emerald-600 via-blue-600 to-slate-800 px-4 py-2 text-sm font-semibold text-white shadow-md transition hover:scale-[1.03] disabled:cursor-not-allowed disabled:opacity-70 sm:w-auto"
         >
           {isGeneratingFinalReport ? 'Generating Final PDF...' : 'Download Final Report'}
         </button>
@@ -77,7 +77,7 @@ export default function AICreditDecision({
           type="button"
           onClick={onGenerateCam}
           disabled={!canGenerateCam || isGeneratingCam}
-          className="rounded-xl bg-linear-to-r from-blue-600 via-purple-600 to-emerald-500 px-4 py-2 text-sm font-semibold text-white shadow-md transition hover:scale-[1.03] disabled:cursor-not-allowed disabled:opacity-70"
+          className="w-full rounded-xl bg-linear-to-r from-blue-600 via-purple-600 to-emerald-500 px-4 py-2 text-sm font-semibold text-white shadow-md transition hover:scale-[1.03] disabled:cursor-not-allowed disabled:opacity-70 sm:w-auto"
         >
           {isGeneratingCam ? 'Generating CAM PDF...' : 'Download CAM Report'}
         </button>

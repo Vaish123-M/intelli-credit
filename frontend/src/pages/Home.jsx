@@ -676,15 +676,15 @@ export default function Home() {
         </RevealSection>
 
         <RevealSection className="glass-card rounded-3xl p-6 shadow-lg ring-1 ring-white/60" delay={0.12}>
-          <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
             <h2 className="text-xl font-bold text-slate-900">Underwriting Studio</h2>
             <img src={brandMark} alt="Intelli-Credit logo" className="h-9 w-auto" />
-            <div className="flex gap-2">
+            <div className="responsive-action-row w-full sm:w-auto sm:justify-end">
               <button
                 type="button"
                 onClick={handleAnalyze}
                 disabled={!entityId || isUploading || isProcessing}
-                className="rounded-xl bg-linear-to-r from-emerald-500 to-emerald-600 px-4 py-2 text-sm font-semibold text-white shadow-md transition hover:scale-[1.03] disabled:cursor-not-allowed disabled:opacity-70"
+                className="w-full rounded-xl bg-linear-to-r from-emerald-500 to-emerald-600 px-4 py-2 text-sm font-semibold text-white shadow-md transition hover:scale-[1.03] disabled:cursor-not-allowed disabled:opacity-70 sm:w-auto"
               >
                 Re-run Analysis
               </button>
@@ -692,7 +692,7 @@ export default function Home() {
                 type="button"
                 onClick={handleLoadResults}
                 disabled={!entityId || isUploading || isProcessing}
-                className="rounded-xl bg-linear-to-r from-blue-500 to-purple-600 px-4 py-2 text-sm font-semibold text-white shadow-md transition hover:scale-[1.03] disabled:cursor-not-allowed disabled:opacity-70"
+                className="w-full rounded-xl bg-linear-to-r from-blue-500 to-purple-600 px-4 py-2 text-sm font-semibold text-white shadow-md transition hover:scale-[1.03] disabled:cursor-not-allowed disabled:opacity-70 sm:w-auto"
               >
                 Load Latest Results
               </button>
@@ -725,26 +725,26 @@ export default function Home() {
 
           {entityId && <p className="mt-2 text-xs font-medium text-slate-600">Active Entity ID: {entityId}</p>}
 
-          <div className="mt-5 grid gap-3 md:grid-cols-3">
+          <div className="responsive-inline-controls mt-5 md:grid-cols-3">
             <input
               type="text"
               value={companyName}
               onChange={(event) => setCompanyName(event.target.value)}
               placeholder="Company name (required for research)"
-              className="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm text-slate-800 outline-none ring-emerald-200 focus:ring"
+              className="w-full rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm text-slate-800 outline-none ring-emerald-200 focus:ring"
             />
             <input
               type="text"
               value={promoterName}
               onChange={(event) => setPromoterName(event.target.value)}
               placeholder="Promoter name (optional)"
-              className="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm text-slate-800 outline-none ring-emerald-200 focus:ring"
+              className="w-full rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm text-slate-800 outline-none ring-emerald-200 focus:ring"
             />
             <button
               type="button"
               onClick={() => handleResearch()}
               disabled={!entityId || isUploading || isProcessing || isResearching || isScoring || isGeneratingCam}
-              className="rounded-xl bg-linear-to-r from-purple-600 to-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-md transition hover:scale-[1.03] disabled:cursor-not-allowed disabled:opacity-70"
+              className="w-full rounded-xl bg-linear-to-r from-purple-600 to-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-md transition hover:scale-[1.03] disabled:cursor-not-allowed disabled:opacity-70 md:w-auto"
             >
               {isResearching ? 'Researching...' : 'Run Research Agent'}
             </button>

@@ -28,8 +28,8 @@ export default function App() {
       <div className="ambient-shape ambient-shape-teal" />
 
       <header className="sticky top-0 z-30 border-b border-white/20 bg-white/45 backdrop-blur-xl">
-        <div className="mx-auto flex w-full max-w-7xl flex-wrap items-center justify-between gap-4 px-4 py-4 sm:px-6 lg:px-8">
-          <div className="flex items-center gap-3">
+        <div className="app-header-inner mx-auto flex w-full max-w-7xl flex-wrap items-center justify-between gap-4 px-4 py-4 sm:px-6 lg:px-8">
+          <div className="app-brand flex items-center gap-3">
             <img src={brandMark} alt="Intelli-Credit" className="h-10 w-auto" />
             <div>
               <p className="text-xs font-semibold uppercase tracking-[0.2em] text-sky-700">Intelli-Credit</p>
@@ -37,7 +37,7 @@ export default function App() {
             </div>
           </div>
 
-          <nav className="flex flex-wrap items-center gap-2 rounded-2xl border border-slate-200/80 bg-white/80 p-1 shadow-sm">
+          <nav className="app-nav flex flex-wrap items-center gap-2 rounded-2xl border border-slate-200/80 bg-white/80 p-1 shadow-sm">
             {VIEWS.map((view) => {
               const isActive = view.id === activeView
               return (
@@ -45,7 +45,7 @@ export default function App() {
                   key={view.id}
                   type="button"
                   onClick={() => setActiveView(view.id)}
-                  className={`rounded-xl px-3 py-2 text-sm font-semibold transition sm:px-4 ${
+                  className={`app-nav-button rounded-xl px-3 py-2 text-sm font-semibold transition sm:px-4 ${
                     isActive
                       ? 'bg-gradient-to-r from-blue-600 via-purple-600 to-emerald-500 text-white shadow-lg shadow-blue-500/30'
                       : 'text-slate-700 hover:bg-slate-100'

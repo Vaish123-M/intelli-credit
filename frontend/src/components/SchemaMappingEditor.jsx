@@ -64,20 +64,20 @@ export default function SchemaMappingEditor({
         <p className="text-xs font-bold uppercase tracking-widest text-slate-600">Schema Definition</p>
         <p className="mt-1 text-xs text-slate-500">Add or remove output fields used for extracted structured data.</p>
 
-        <div className="mt-3 flex flex-wrap gap-2">
+        <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:flex-wrap">
           <input
             type="text"
             value={newFieldLabel}
             onChange={(event) => setNewFieldLabel(event.target.value)}
             disabled={disabled}
             placeholder="Add field label (for example: DSCR)"
-            className="min-w-55 flex-1 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 outline-none ring-blue-100 focus:ring"
+            className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 outline-none ring-blue-100 focus:ring sm:min-w-55 sm:flex-1"
           />
           <button
             type="button"
             onClick={handleAddField}
             disabled={disabled || !newFieldLabel.trim()}
-            className="rounded-lg border border-blue-300 bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-700 transition hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-60"
+            className="w-full rounded-lg border border-blue-300 bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-700 transition hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
           >
             Add Field
           </button>
@@ -101,7 +101,7 @@ export default function SchemaMappingEditor({
         </div>
       </div>
 
-      <div className="mt-4 overflow-x-auto">
+      <div className="responsive-table-shell mt-4">
         <table className="min-w-full divide-y divide-slate-200 text-sm">
           <thead className="bg-slate-50">
             <tr>

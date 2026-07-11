@@ -172,6 +172,87 @@ h4 {
 	display: inline;
 }
 
+.responsive-table-shell {
+	overflow-x: auto;
+	-webkit-overflow-scrolling: touch;
+}
+
+.responsive-action-row {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 0.75rem;
+	align-items: center;
+}
+
+.responsive-inline-controls {
+	display: grid;
+	gap: 0.75rem;
+}
+
+.responsive-step-row {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 0.75rem;
+	align-items: center;
+}
+
+@media (max-width: 639px) {
+	body {
+		background-attachment: scroll;
+	}
+
+	.app-header-inner {
+		flex-direction: column;
+		align-items: stretch;
+	}
+
+	.app-brand {
+		width: 100%;
+	}
+
+	.app-nav {
+		width: 100%;
+		flex-wrap: nowrap;
+		overflow-x: auto;
+		justify-content: flex-start;
+		padding-bottom: 0.25rem;
+	}
+
+	.app-nav-button {
+		flex: 0 0 auto;
+		white-space: nowrap;
+	}
+
+	.responsive-action-row {
+		flex-direction: column;
+		align-items: stretch;
+	}
+
+	.responsive-action-row > * {
+		width: 100%;
+	}
+
+	.responsive-inline-controls {
+		grid-template-columns: 1fr;
+	}
+
+	.responsive-step-row {
+		flex-wrap: nowrap;
+		overflow-x: auto;
+		padding-bottom: 0.25rem;
+		align-items: flex-start;
+	}
+
+	.responsive-step-row > * {
+		flex: 0 0 auto;
+	}
+
+	.responsive-table-shell {
+		margin-right: -0.25rem;
+		padding-bottom: 0.25rem;
+	}
+}
+
 @media (min-width: 960px) {
 	.workflow-flowchart {
 		display: flex;

@@ -161,7 +161,7 @@ export default function EntityOnboarding({ onSubmit, onCompleted }) {
           <p className="text-xs font-semibold uppercase tracking-[0.12em] text-blue-700">Entity Onboarding</p>
           <h3 className="text-lg font-bold text-slate-900">Step {step}: {stepLabel}</h3>
         </div>
-        <div className="flex flex-wrap items-center gap-4">
+        <div className="responsive-step-row w-full sm:w-auto">
           {STEPS.map((item) => (
             <StepPill key={item.id} step={item} activeStep={step} done={isComplete} />
           ))}
@@ -264,12 +264,12 @@ export default function EntityOnboarding({ onSubmit, onCompleted }) {
 
       {submitError && <p className="mt-4 rounded-lg bg-rose-100 px-3 py-2 text-sm text-rose-700">{submitError}</p>}
 
-      <div className="mt-5 flex flex-wrap justify-end gap-2">
+      <div className="responsive-action-row mt-5 justify-end">
         {canGoBack && (
           <button
             type="button"
             onClick={handleBack}
-            className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+            className="w-full rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 sm:w-auto"
           >
             Back
           </button>
@@ -279,7 +279,7 @@ export default function EntityOnboarding({ onSubmit, onCompleted }) {
           <button
             type="button"
             onClick={handleNext}
-            className="rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-md transition hover:scale-[1.02]"
+            className="w-full rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-md transition hover:scale-[1.02] sm:w-auto"
           >
             Next
           </button>
@@ -290,7 +290,7 @@ export default function EntityOnboarding({ onSubmit, onCompleted }) {
             type="button"
             onClick={handleSubmit}
             disabled={isSubmitting}
-            className="rounded-xl bg-gradient-to-r from-emerald-600 to-teal-500 px-4 py-2 text-sm font-semibold text-white shadow-md transition hover:scale-[1.02] disabled:cursor-not-allowed disabled:opacity-70"
+            className="w-full rounded-xl bg-gradient-to-r from-emerald-600 to-teal-500 px-4 py-2 text-sm font-semibold text-white shadow-md transition hover:scale-[1.02] disabled:cursor-not-allowed disabled:opacity-70 sm:w-auto"
           >
             {isSubmitting ? 'Saving...' : 'Continue to Document Upload'}
           </button>

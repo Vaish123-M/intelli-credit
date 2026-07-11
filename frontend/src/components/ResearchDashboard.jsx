@@ -34,7 +34,7 @@ export default function ResearchDashboard({ intelligence }) {
         <span className="rounded-full bg-linear-to-r from-emerald-500 to-blue-600 px-3 py-1 text-xs font-semibold text-white">Secondary Research Engine</span>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <IntelligenceCard
           title="News Sentiment"
           value={asPercent(intelligence.negative_news_score || 0)}
@@ -91,7 +91,7 @@ export default function ResearchDashboard({ intelligence }) {
         )}
       </div>
 
-      <div className="grid gap-3 md:grid-cols-3">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         <div className="rounded-xl bg-slate-50 p-3 text-xs text-slate-700 ring-1 ring-slate-200">
           <p className="font-semibold text-slate-900">Legal Risk</p>
           <p className="mt-1">{intelligence.legal_risk || 'No major litigation found'}</p>
