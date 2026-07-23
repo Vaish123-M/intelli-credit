@@ -14,7 +14,7 @@ from uuid import uuid4
 
 import pandas as pd
 import pdfplumber
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile, Depends
+from fastapi import FastAPI, File, Form, HTTPException, UploadFile, Depends, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.security import OAuth2PasswordRequestForm
@@ -1147,7 +1147,6 @@ async def register(user_data: UserCreate, request: Request) -> UserInDB:
 
 
 @app.post("/auth/login")
-@limiter.limit("10/minute")
 async def login(form_data: OAuth2PasswordRequestForm = Depends()) -> Token:
     """Authenticate user and return JWT token."""
     users = state.get("users", {})
@@ -1189,7 +1188,6 @@ async def get_me(current_user: dict = Depends(get_current_active_user)) -> User:
 
 
 @app.post("/entity-onboard")
-@limiter.limit("20/minute")
 def entity_onboard(payload: EntityOnboardRequest) -> dict[str, Any]:
     entity_id = f"ent_{uuid4().hex[:12]}"
     entity_record = {
@@ -1330,7 +1328,6 @@ async def classify_documents(entity_id: str = Form(...), files: list[UploadFile]
 
 
 @app.post("/upload")
-@limiter.limit("10/minute")
 async def upload(entity_id: str = Form(...), files: list[UploadFile] = File(...), classifications: str | None = Form(None)) -> dict[str, Any]:
     if not files:
         raise HTTPException(status_code=400, detail="No files provided")
@@ -1539,7 +1536,6 @@ def results(entity_id: str | None = None) -> dict[str, Any]:
 
 
 @app.post("/research")
-@limiter.limit("5/minute")
 def research(payload: ResearchRequest) -> dict[str, Any]:
     resolved_entity_id = _resolve_entity_id(payload.entity_id)
     intelligence = _run_secondary_research_with_retry(
