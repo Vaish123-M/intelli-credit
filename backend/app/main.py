@@ -49,6 +49,7 @@ from app.services.portfolio_service import (
     portfolio_high_risk as build_portfolio_high_risk,
     portfolio_summary as build_portfolio_summary,
 )
+from app.services.document_service import classify_documents as classify_documents_workflow
 from app.persistence import StateRepository
 try:
     import anthropic
@@ -1084,55 +1085,24 @@ def health_check() -> dict[str, str]:
 
 
 async def classify_documents(entity_id: str = Form(...), files: list[UploadFile] = File(...)) -> dict[str, Any]:
-    if not files:
-        raise HTTPException(status_code=400, detail="No files provided")
-
-    resolved_entity_id = _resolve_entity_id(entity_id)
-    if not resolved_entity_id:
-        raise HTTPException(status_code=400, detail="entity_id is required. Please complete onboarding first.")
-
-    entity_bucket = _get_entity_bucket(resolved_entity_id)
-    results: list[dict[str, Any]] = []
-
-    for upload_file in files:
-        safe_name = upload_file.filename or f"upload_{datetime.now(UTC).timestamp():.0f}.bin"
-        content = await upload_file.read()
-        _validate_upload_payload(safe_name, content)
-        _run_antivirus_placeholder(safe_name, content)
-        temp_path = UPLOADS_DIR / _sanitize_storage_filename(safe_name)
-        temp_path.write_bytes(content)
-
-        try:
-            parsed_text, _ = _extract_text_with_ocr_fallback(temp_path)
-            table_metrics: dict[str, int] = {}
-            if temp_path.suffix.lower() == ".pdf":
-                table_metrics, _, _ = _extract_financials_from_pdf_tables(temp_path)
-            elif temp_path.suffix.lower() == ".csv":
-                table_metrics, _, _ = _extract_financials_from_csv(temp_path)
-            else:
-                table_metrics, _, _ = _extract_financials_from_text_table(parsed_text, safe_name)
-
-            results.append(_rule_based_document_classifier(safe_name, parsed_text, table_metrics))
-        except HTTPException:
-            raise
-        except Exception as error:  # noqa: BLE001
-            logger.exception("Classification failed for file %s", safe_name)
-            raise HTTPException(status_code=400, detail=f"Failed to classify '{safe_name}': {error}") from error
-        finally:
-            try:
-                temp_path.unlink(missing_ok=True)
-            except Exception:  # noqa: BLE001
-                logger.warning("Could not remove temp file %s", temp_path)
-
-    entity_bucket["classifications"] = results
-    state["current_entity_id"] = resolved_entity_id
-    _persist_state()
-
-    return {
-        "entity_id": resolved_entity_id,
-        "results": results,
-        "supported_types": DOC_TYPES,
-    }
+    return await classify_documents_workflow(
+        entity_id,
+        files,
+        state=state,
+        uploads_dir=UPLOADS_DIR,
+        document_types=DOC_TYPES,
+        resolve_entity_id=_resolve_entity_id,
+        get_entity_bucket=_get_entity_bucket,
+        validate_upload=_validate_upload_payload,
+        antivirus_scan=_run_antivirus_placeholder,
+        sanitize_filename=_sanitize_storage_filename,
+        extract_text=_extract_text_with_ocr_fallback,
+        extract_pdf_metrics=_extract_financials_from_pdf_tables,
+        extract_csv_metrics=_extract_financials_from_csv,
+        extract_text_metrics=_extract_financials_from_text_table,
+        classify_file=_rule_based_document_classifier,
+        persist_state=_persist_state,
+    )
 
 
 async def upload(entity_id: str = Form(...), files: list[UploadFile] = File(...), classifications: str | None = Form(None)) -> dict[str, Any]:
