@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   # PostgreSQL Database
   postgres:
@@ -69,7 +67,7 @@ services:
       dockerfile: Dockerfile
     container_name: intelli-credit-frontend
     ports:
-      - "80:80"
+      - "80:8080"
     depends_on:
       - backend
 

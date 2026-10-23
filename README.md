@@ -324,6 +324,7 @@ Key environment variables (see `.env.example`):
 - [ ] Set up proper logging aggregation
 - [ ] Configure backup strategy for database
 - [ ] Set up monitoring alerts
+- [ ] Run the frontend container as the non-root `nginx` user and verify its health check
 
 ### Deploy to Render
 The project includes `render.yaml` for easy deployment to Render cloud platform.
