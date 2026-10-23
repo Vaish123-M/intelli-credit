@@ -199,6 +199,7 @@ SCHEMA_ALIAS_MAP: dict[str, list[str]] = {
 
 def _default_state() -> dict[str, Any]:
     return {
+        "users": {},
         "uploaded_files": [],
         "extracted_data": [],
         "analysis": None,
@@ -1119,7 +1120,7 @@ async def register(user_data: UserCreate, request: Request) -> UserInDB:
     # Check if user already exists (in-memory for demo, would use DB in production)
     users = state.setdefault("users", {})
     
-    if user_data.email in users:
+    if any(u.get("email") == str(user_data.email) for u in users.values()):
         raise HTTPException(status_code=400, detail="Email already registered")
     
     if user_data.username in [u["username"] for u in users.values()]:
@@ -1140,7 +1141,7 @@ async def register(user_data: UserCreate, request: Request) -> UserInDB:
         hashed_password=hashed_password,
     )
     
-    users[user_id] = user.model_dump()
+    users[user_id] = json.loads(user.model_dump_json())
     _persist_state()
     
     return user

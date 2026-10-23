@@ -41,7 +41,7 @@ jobs:
         run: pytest -q tests/test_portfolio.py
 
       - name: Run all tests with coverage
-        run: pytest --cov=app --cov-report=term-missing tests/
+        run: pytest --cov=app --cov-report=term-missing --cov-report=xml:coverage.xml tests/
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v4
