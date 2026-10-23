@@ -33,6 +33,10 @@ from app.api.routes.reports import (
     FinalReportRequest,
     router as reports_router,
 )
+from app.api.routes.operations import (
+    CopilotRequest,
+    router as operations_router,
+)
 
 from app.services.cam import generate_final_report_pdf
 from app.services.audit_store import initialize_audit_store, list_audit_events, record_audit_event
@@ -289,6 +293,7 @@ app.include_router(entities_router)
 app.include_router(documents_router)
 app.include_router(research_risk_router)
 app.include_router(reports_router)
+app.include_router(operations_router)
 
 
 class CamRequest(BaseModel):
@@ -305,11 +310,6 @@ class FinalReportRequest(BaseModel):
     financial_analysis: dict[str, Any] = Field(default_factory=dict)
     external_intelligence: dict[str, Any] = Field(default_factory=dict)
     risk_decision: dict[str, Any] = Field(default_factory=dict)
-
-
-class CopilotRequest(BaseModel):
-    company_data: dict[str, Any] = Field(default_factory=dict)
-    question: str = ""
 
 
 def _resolve_entity_id(entity_id: str | None = None) -> str | None:
@@ -1585,7 +1585,6 @@ def generate_final_report(payload: FinalReportRequest) -> dict[str, str]:
     return {"final_report_url": f"/downloads/{report_name}"}
 
 
-@app.get("/audit/events")
 def audit_events(entity_id: str | None = None, limit: int = 100) -> dict[str, Any]:
     safe_limit = max(1, min(int(limit or 100), 500))
     return {
@@ -1614,7 +1613,6 @@ app.state.report_handlers = {
 }
 
 
-@app.get("/dashboard/summary")
 def dashboard_summary() -> dict[str, Any]:
     deals = list(state.get("deals", []))
     companies_analyzed = len(deals)
@@ -1632,13 +1630,11 @@ def dashboard_summary() -> dict[str, Any]:
     }
 
 
-@app.get("/dashboard/deals")
 def dashboard_deals() -> list[dict[str, Any]]:
     deals = list(state.get("deals", []))
     return sorted(deals, key=lambda deal: str(deal.get("timestamp", "")), reverse=True)
 
 
-@app.post("/copilot/ask")
 def copilot_ask(payload: CopilotRequest) -> dict[str, str]:
     prompt = payload.question.strip() or "No question provided"
     
@@ -1773,7 +1769,6 @@ Note: LLM integration is not configured. Please set ANTHROPIC_API_KEY or OPENAI_
     return {"answer": fallback_answer}
 
 
-@app.get("/portfolio/summary")
 def portfolio_summary() -> dict[str, Any]:
     entities = state.get("entities", {})
     deals = list(state.get("deals", []))
@@ -1802,7 +1797,6 @@ def portfolio_summary() -> dict[str, Any]:
     }
 
 
-@app.get("/portfolio/alerts")
 def portfolio_alerts() -> list[str]:
     alerts = []
     entities = state.get("entities", {})
@@ -1852,7 +1846,6 @@ def portfolio_alerts() -> list[str]:
     return alerts
 
 
-@app.get("/portfolio/companies")
 def portfolio_companies() -> list[dict[str, Any]]:
     companies = []
     entities = state.get("entities", {})
@@ -1904,7 +1897,6 @@ def portfolio_companies() -> list[dict[str, Any]]:
     return companies
 
 
-@app.get("/portfolio/high-risk")
 def portfolio_high_risk() -> list[dict[str, Any]]:
     high_risk_companies = []
     entities = state.get("entities", {})
@@ -1950,3 +1942,15 @@ def portfolio_high_risk() -> list[dict[str, Any]]:
     # Sort by risk score (highest first)
     high_risk_companies.sort(key=lambda x: x["risk_score"], reverse=True)
     return high_risk_companies
+
+
+app.state.operation_handlers = {
+    "audit_events": audit_events,
+    "dashboard_summary": dashboard_summary,
+    "dashboard_deals": dashboard_deals,
+    "copilot_ask": copilot_ask,
+    "portfolio_summary": portfolio_summary,
+    "portfolio_alerts": portfolio_alerts,
+    "portfolio_companies": portfolio_companies,
+    "portfolio_high_risk": portfolio_high_risk,
+}
