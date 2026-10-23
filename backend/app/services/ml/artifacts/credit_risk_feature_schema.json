@@ -1,0 +1,17 @@
+{
+  "model_version": "logreg_v1",
+  "feature_names": [
+    "debt_equity_ratio",
+    "ebitda_margin",
+    "revenue_growth",
+    "gst_mismatch",
+    "negative_news_signal",
+    "litigation_signal",
+    "sector_growth_signal",
+    "market_sentiment_signal"
+  ],
+  "thresholds": {
+    "approve_max_probability": 0.35,
+    "review_max_probability": 0.65
+  }
+}

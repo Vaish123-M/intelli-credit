@@ -50,3 +50,5 @@ def test_risk_model_changes_with_input_profile() -> None:
 
     assert strong_profile["decision"] != weak_profile["decision"]
     assert strong_profile["risk_score"] < weak_profile["risk_score"]
+    assert strong_profile["feature_contributions"]
+    assert strong_profile["feature_contributions"][0]["feature"]

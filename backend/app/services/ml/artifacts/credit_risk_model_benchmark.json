@@ -1,5 +1,9 @@
 {
   "accuracy": 0.8571428571428571,
   "f1_score": 0.8571428571428571,
-  "roc_auc": 0.8333333333333334
+  "roc_auc": 0.8333333333333334,
+  "dataset_type": "synthetic_demo",
+  "dataset_size": 19,
+  "test_size": 0.33,
+  "random_state": 42
 }

@@ -90,6 +90,13 @@ Intelli-Credit is a production-grade full-stack application that automates corpo
 - Docker and production deployments can set `DATABASE_URL` to PostgreSQL.
 - Existing `backend/data/app_state.json` files are imported automatically on first startup.
 
+### ML model reproducibility
+- The risk model is a deterministic, class-balanced logistic regression over a synthetic demonstration dataset.
+- Train artifacts with `python -m app.services.ml.train_model` from `backend/`.
+- Evaluate the checked-in artifact with `python -m app.services.ml.evaluate_model`.
+- Model limitations and intended use are documented in [backend/app/services/ml/model_card.md](backend/app/services/ml/model_card.md).
+- Risk responses include model version, benchmark metadata, and ranked feature contributions for analyst review.
+
 ---
 
 ## 📁 Repository Structure

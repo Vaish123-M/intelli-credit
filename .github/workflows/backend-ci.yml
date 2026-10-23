@@ -47,6 +47,9 @@ jobs:
         # python-jose currently has advisories without a published fixed version.
         run: pip-audit -r backend/requirements.txt --ignore PYSEC-2026-4298 --ignore PYSEC-2026-1325
 
+      - name: Verify risk model evaluation
+        run: python -m app.services.ml.evaluate_model
+
       - name: Run integration tests
         run: pytest -q tests/test_api_integration.py
 

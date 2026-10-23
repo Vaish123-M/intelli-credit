@@ -15,6 +15,7 @@ from sklearn.model_selection import train_test_split
 MODEL_DIR = Path(__file__).resolve().parent / "artifacts"
 MODEL_PATH = MODEL_DIR / "credit_risk_model.joblib"
 BENCHMARK_PATH = MODEL_DIR / "credit_risk_model_benchmark.json"
+FEATURE_SCHEMA_PATH = MODEL_DIR / "credit_risk_feature_schema.json"
 MODEL_VERSION = "logreg_v1"
 
 
@@ -22,7 +23,7 @@ MODEL_VERSION = "logreg_v1"
 class RiskModelArtifacts:
     model_version: str
     feature_names: list[str]
-    benchmark: dict[str, float]
+    benchmark: dict[str, Any]
     threshold: float
 
 
@@ -93,7 +94,7 @@ def _training_samples() -> tuple[np.ndarray, np.ndarray]:
     return samples, labels
 
 
-def _benchmark_model() -> RiskModelArtifacts:
+def train_model() -> RiskModelArtifacts:
     samples, labels = _training_samples()
     feature_names = [
         "debt_equity_ratio",
@@ -120,10 +121,14 @@ def _benchmark_model() -> RiskModelArtifacts:
     probabilities = model.predict_proba(x_test)[:, 1]
     predictions = (probabilities >= 0.5).astype(int)
 
-    benchmark = {
+    benchmark: dict[str, Any] = {
         "accuracy": float(accuracy_score(y_test, predictions)),
         "f1_score": float(f1_score(y_test, predictions)),
         "roc_auc": float(roc_auc_score(y_test, probabilities)),
+        "dataset_type": "synthetic_demo",
+        "dataset_size": int(len(samples)),
+        "test_size": 0.33,
+        "random_state": 42,
     }
 
     MODEL_DIR.mkdir(parents=True, exist_ok=True)
@@ -135,6 +140,20 @@ def _benchmark_model() -> RiskModelArtifacts:
     }
     joblib.dump(payload, MODEL_PATH)
     BENCHMARK_PATH.write_text(json.dumps(benchmark, indent=2), encoding="utf-8")
+    FEATURE_SCHEMA_PATH.write_text(
+        json.dumps(
+            {
+                "model_version": MODEL_VERSION,
+                "feature_names": feature_names,
+                "thresholds": {
+                    "approve_max_probability": 0.35,
+                    "review_max_probability": 0.65,
+                },
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
 
     return RiskModelArtifacts(MODEL_VERSION, feature_names, benchmark, 0.5)
 
@@ -156,12 +175,27 @@ def _load_or_train_model() -> tuple[LogisticRegression, list[str], float, RiskMo
         )
         return payload["model"], artifacts.feature_names, artifacts.threshold, artifacts
 
-    artifacts = _benchmark_model()
-    payload = joblib.load(MODEL_PATH)
-    return payload["model"], artifacts.feature_names, artifacts.threshold, artifacts
+    raise RuntimeError(
+        f"Risk model artifact is missing at {MODEL_PATH}. Run "
+        "`python -m app.services.ml.train_model` before starting the API."
+    )
 
 
 MODEL, MODEL_FEATURE_NAMES, MODEL_THRESHOLD, MODEL_ARTIFACTS = _load_or_train_model()
+
+
+def _feature_contributions(features: list[float], feature_names: list[str]) -> list[dict[str, Any]]:
+    coefficients = getattr(MODEL, "coef_", [[0.0] * len(features)])[0]
+    contributions = [
+        {
+            "feature": name,
+            "value": round(value, 4),
+            "contribution": round(float(coefficient) * value, 4),
+            "direction": "increases_risk" if coefficient > 0 else "reduces_risk",
+        }
+        for name, value, coefficient in zip(feature_names, features, coefficients, strict=True)
+    ]
+    return sorted(contributions, key=lambda item: abs(item["contribution"]), reverse=True)
 
 
 def _decision_from_probability(probability: float) -> str:
@@ -238,6 +272,7 @@ def build_credit_recommendation(
         "model_version": MODEL_ARTIFACTS.model_version,
         "benchmark": MODEL_ARTIFACTS.benchmark,
         "feature_names": feature_names,
+        "feature_contributions": _feature_contributions(features, feature_names),
         "reasoning": reasoning,
         "recommended_loan_limit": loan_limit,
         "recommended_interest_rate": interest_rate,
