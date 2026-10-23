@@ -22,6 +22,7 @@ from pypdf import PdfReader
 from slowapi import _rate_limit_exceeded_handler
 from app.api.routes.auth import limiter, router as auth_router
 from app.api.routes.entities import router as entities_router
+from app.api.routes.documents import router as documents_router
 
 from app.services.cam import generate_final_report_pdf
 from app.services.audit_store import initialize_audit_store, list_audit_events, record_audit_event
@@ -275,6 +276,7 @@ app.state.app_state = state
 app.state.persist_state = _persist_state
 app.include_router(auth_router)
 app.include_router(entities_router)
+app.include_router(documents_router)
 
 
 class ResearchRequest(BaseModel):
@@ -1098,7 +1100,6 @@ def health_check() -> dict[str, str]:
     return {"status": "healthy", "service": "intelli-credit-api", "mode": "demo"}
 
 
-@app.post("/classify-documents")
 async def classify_documents(entity_id: str = Form(...), files: list[UploadFile] = File(...)) -> dict[str, Any]:
     if not files:
         raise HTTPException(status_code=400, detail="No files provided")
@@ -1151,7 +1152,6 @@ async def classify_documents(entity_id: str = Form(...), files: list[UploadFile]
     }
 
 
-@app.post("/upload")
 async def upload(entity_id: str = Form(...), files: list[UploadFile] = File(...), classifications: str | None = Form(None)) -> dict[str, Any]:
     if not files:
         raise HTTPException(status_code=400, detail="No files provided")
@@ -1310,7 +1310,6 @@ async def upload(entity_id: str = Form(...), files: list[UploadFile] = File(...)
     }
 
 
-@app.post("/analyze")
 def analyze(entity_id: str | None = None) -> dict[str, Any]:
     resolved_entity_id = _resolve_entity_id(entity_id)
     if resolved_entity_id:
@@ -1331,7 +1330,6 @@ def analyze(entity_id: str | None = None) -> dict[str, Any]:
     return {"entity_id": resolved_entity_id, "analysis": analysis, "extracted_data": extracted_data}
 
 
-@app.get("/results")
 def results(entity_id: str | None = None) -> dict[str, Any]:
     resolved_entity_id = _resolve_entity_id(entity_id)
     if resolved_entity_id:
@@ -1357,6 +1355,14 @@ def results(entity_id: str | None = None) -> dict[str, Any]:
         "research_history": [],
         "schema_mapping": None,
     }
+
+
+app.state.document_handlers = {
+    "classify_documents": classify_documents,
+    "upload": upload,
+    "analyze": analyze,
+    "results": results,
+}
 
 
 @app.post("/research")
