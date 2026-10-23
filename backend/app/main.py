@@ -17,24 +17,16 @@ import pdfplumber
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile, Depends, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
-from fastapi.security import OAuth2PasswordRequestForm
 from pydantic import BaseModel, Field
 from pypdf import PdfReader
-from slowapi import Limiter, _rate_limit_exceeded_handler
-from slowapi.util import get_remote_address
+from slowapi import _rate_limit_exceeded_handler
+from app.api.routes.auth import limiter, router as auth_router
 
 from app.services.cam import generate_final_report_pdf
 from app.services.audit_store import initialize_audit_store, list_audit_events, record_audit_event
 from app.services.ml import build_credit_recommendation, generate_swot_analysis
 from app.services.research import run_secondary_research
 from app.auth import (
-    create_access_token,
-    verify_password,
-    get_password_hash,
-    User,
-    UserCreate,
-    UserInDB,
-    Token,
     get_current_active_user,
     require_role,
     UserRole,
@@ -62,8 +54,6 @@ UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 initialize_audit_store()
 
-# Rate limiting setup
-limiter = Limiter(key_func=get_remote_address)
 app = FastAPI(title="Intelli-Credit API", version="0.3.0")
 app.state.limiter = limiter
 app.add_exception_handler(429, _rate_limit_exceeded_handler)
@@ -280,6 +270,9 @@ def _resolve_download_path(filename: str) -> Path:
 
 
 state: dict[str, Any] = _load_state()
+app.state.app_state = state
+app.state.persist_state = _persist_state
+app.include_router(auth_router)
 
 
 class EntityOnboardRequest(BaseModel):
@@ -1110,82 +1103,6 @@ def root() -> dict[str, str]:
 @app.get("/health")
 def health_check() -> dict[str, str]:
     return {"status": "healthy", "service": "intelli-credit-api", "mode": "demo"}
-
-
-# Authentication endpoints
-@app.post("/auth/register", status_code=201)
-@limiter.limit("5/minute")
-async def register(user_data: UserCreate, request: Request) -> UserInDB:
-    """Register a new user."""
-    # Check if user already exists (in-memory for demo, would use DB in production)
-    users = state.setdefault("users", {})
-    
-    if any(u.get("email") == str(user_data.email) for u in users.values()):
-        raise HTTPException(status_code=400, detail="Email already registered")
-    
-    if user_data.username in [u["username"] for u in users.values()]:
-        raise HTTPException(status_code=400, detail="Username already taken")
-    
-    # Create user with hashed password
-    user_id = f"user_{uuid4().hex[:12]}"
-    hashed_password = get_password_hash(user_data.password)
-    
-    user = UserInDB(
-        id=user_id,
-        email=user_data.email,
-        username=user_data.username,
-        full_name=user_data.full_name,
-        role=user_data.role,
-        is_active=True,
-        created_at=datetime.utcnow(),
-        hashed_password=hashed_password,
-    )
-    
-    users[user_id] = json.loads(user.model_dump_json())
-    _persist_state()
-    
-    return user
-
-
-@app.post("/auth/login")
-async def login(form_data: OAuth2PasswordRequestForm = Depends()) -> Token:
-    """Authenticate user and return JWT token."""
-    users = state.get("users", {})
-    
-    # Find user by username or email
-    user = None
-    for u in users.values():
-        if u.get("username") == form_data.username or u.get("email") == form_data.username:
-            user = u
-            break
-    
-    if not user:
-        raise HTTPException(status_code=401, detail="Invalid credentials")
-    
-    if not verify_password(form_data.password, user["hashed_password"]):
-        raise HTTPException(status_code=401, detail="Invalid credentials")
-    
-    if not user.get("is_active", True):
-        raise HTTPException(status_code=403, detail="User account is disabled")
-    
-    # Create access token
-    access_token_expires = timedelta(minutes=30)
-    access_token = create_access_token(
-        data={"sub": user["username"], "role": user["role"]},
-        expires_delta=access_token_expires,
-    )
-    
-    return Token(access_token=access_token, token_type="bearer")
-
-
-@app.get("/auth/me")
-async def get_me(current_user: dict = Depends(get_current_active_user)) -> User:
-    """Get current user information."""
-    users = state.get("users", {})
-    for u in users.values():
-        if u.get("username") == current_user.username:
-            return User(**u)
-    raise HTTPException(status_code=404, detail="User not found")
 
 
 @app.post("/entity-onboard")
