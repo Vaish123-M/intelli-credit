@@ -19,7 +19,7 @@ describe('App navigation', () => {
   it('switches between the main views', async () => {
     render(<App />)
 
-    expect(screen.getByText('home stub')).toBeInTheDocument()
+    expect(await screen.findByText('home stub')).toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: /credit dashboard/i }))
     await waitFor(() => expect(screen.getByText('credit stub')).toBeInTheDocument())

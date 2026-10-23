@@ -1,10 +1,11 @@
-import { useMemo, useState } from 'react'
+import { lazy, Suspense, useMemo, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 
-import Home from './pages/Home'
-import CreditDashboard from './pages/CreditDashboard'
-import PortfolioDashboard from './pages/PortfolioDashboard'
 import brandMark from './assets/intelli-credit-mark.svg'
+
+const Home = lazy(() => import('./pages/Home'))
+const CreditDashboard = lazy(() => import('./pages/CreditDashboard'))
+const PortfolioDashboard = lazy(() => import('./pages/PortfolioDashboard'))
 
 const VIEWS = [
   { id: 'underwrite', label: 'Underwriting Studio', icon: '🤖' },
@@ -69,7 +70,15 @@ export default function App() {
           exit={{ opacity: 0, y: -8 }}
           transition={{ duration: 0.24, ease: 'easeInOut' }}
         >
-          <ActivePage />
+          <Suspense
+            fallback={
+              <div className="mx-auto flex min-h-[40vh] max-w-7xl items-center justify-center px-4 text-sm font-semibold text-slate-600">
+                Loading workspace...
+              </div>
+            }
+          >
+            <ActivePage />
+          </Suspense>
         </motion.div>
       </AnimatePresence>
     </div>
