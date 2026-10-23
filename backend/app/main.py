@@ -23,6 +23,11 @@ from slowapi import _rate_limit_exceeded_handler
 from app.api.routes.auth import limiter, router as auth_router
 from app.api.routes.entities import router as entities_router
 from app.api.routes.documents import router as documents_router
+from app.api.routes.research_risk import (
+    ResearchRequest,
+    RiskScoreRequest,
+    router as research_risk_router,
+)
 
 from app.services.cam import generate_final_report_pdf
 from app.services.audit_store import initialize_audit_store, list_audit_events, record_audit_event
@@ -277,18 +282,7 @@ app.state.persist_state = _persist_state
 app.include_router(auth_router)
 app.include_router(entities_router)
 app.include_router(documents_router)
-
-
-class ResearchRequest(BaseModel):
-    company_name: str
-    promoter_name: str | None = None
-    entity_id: str | None = None
-
-
-class RiskScoreRequest(BaseModel):
-    company_name: str = "Unknown Company"
-    financial_analysis: dict[str, Any] = Field(default_factory=dict)
-    external_intelligence: dict[str, Any] = Field(default_factory=dict)
+app.include_router(research_risk_router)
 
 
 class CamRequest(BaseModel):
@@ -1365,7 +1359,6 @@ app.state.document_handlers = {
 }
 
 
-@app.post("/research")
 def research(payload: ResearchRequest) -> dict[str, Any]:
     resolved_entity_id = _resolve_entity_id(payload.entity_id)
     intelligence = _run_secondary_research_with_retry(
@@ -1411,7 +1404,6 @@ def research(payload: ResearchRequest) -> dict[str, Any]:
     }
 
 
-@app.post("/risk-score")
 def risk_score(payload: RiskScoreRequest) -> dict[str, Any]:
     analysis = payload.financial_analysis or {}
     intelligence = payload.external_intelligence or {}
@@ -1478,6 +1470,12 @@ def risk_score(payload: RiskScoreRequest) -> dict[str, Any]:
     )
 
     return decision
+
+
+app.state.research_handlers = {
+    "research": research,
+    "risk_score": risk_score,
+}
 
 
 @app.post("/generate-cam")
