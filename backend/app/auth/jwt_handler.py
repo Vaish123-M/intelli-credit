@@ -1,6 +1,9 @@
 from datetime import datetime, timedelta
 from typing import Optional
-from jose import JWTError, jwt
+
+import jwt
+from jwt.exceptions import PyJWTError
+
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from app.auth.models import TokenData
@@ -36,7 +39,7 @@ def verify_token(token: str) -> TokenData:
                 detail="Could not validate credentials",
             )
         return TokenData(username=username, role=role)
-    except JWTError as error:
+    except PyJWTError as error:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Could not validate credentials",
