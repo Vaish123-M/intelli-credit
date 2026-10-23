@@ -186,17 +186,6 @@ export default function Home() {
     [approvedDocTypes]
   )
 
-  const statusLabel = useMemo(() => {
-    if (isClassifying) return 'Classifying uploaded documents by type...'
-    if (isUploading) return 'Uploading files to backend...'
-    if (isProcessing) return 'Running extraction and financial analysis...'
-    if (isResearching) return 'Running external research agent...'
-    if (isScoring) return 'Running AI credit risk model...'
-    if (isGeneratingCam) return 'Generating credit approval memo report...'
-    if (isGeneratingFinalReport) return 'Generating final investment/credit assessment report...'
-    return ''
-  }, [isClassifying, isUploading, isProcessing, isResearching, isScoring, isGeneratingCam, isGeneratingFinalReport])
-
   const handleFilesSelected = (files) => {
     setSelectedFiles(files)
     setClassifications([])

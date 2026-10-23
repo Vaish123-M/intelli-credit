@@ -44,7 +44,7 @@ export default function CreditDashboard() {
     setError('')
     setLoading(true)
     try {
-      const [nextDeals, summaryData] = await Promise.all([
+      const [nextDeals] = await Promise.all([
         getDashboardDeals(),
         getDashboardSummary(),
       ])
