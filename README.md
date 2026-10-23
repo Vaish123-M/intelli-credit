@@ -341,6 +341,20 @@ npm run build:check
 ### Deploy to Render
 The project includes `render.yaml` for easy deployment to Render cloud platform.
 
+After deployment, verify the backend health endpoint before connecting the frontend:
+
+```bash
+curl https://<your-backend-domain>/health
+```
+
+Expected response:
+
+```json
+{"status":"healthy","service":"intelli-credit-api","mode":"demo"}
+```
+
+Set `CORS_ORIGINS` to the exact deployed frontend origin, configure `DATABASE_URL` with a managed PostgreSQL connection string, and set a strong random `SECRET_KEY` in the hosting provider's secret settings. The frontend deployment uses `npm run build:check`, so the same bundle budget enforced by GitHub Actions is also applied by Vercel.
+
 ### Deploy to AWS/GCP/Azure
 Use the provided Docker images and docker-compose configuration as a template for cloud deployment.
 

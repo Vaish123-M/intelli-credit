@@ -6,11 +6,18 @@ services:
     plan: free
     buildCommand: pip install -r requirements.txt
     startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
     envVars:
       - key: PYTHON_VERSION
         value: 3.11.9
       - key: CORS_ORIGINS
         value: https://your-frontend-domain.vercel.app
+      - key: DATABASE_URL
+        sync: false
+      - key: SECRET_KEY
+        sync: false
+      - key: HIGH_RISK_THRESHOLD
+        value: "0.6"
       - key: NEWS_API_KEY
         sync: false
       - key: SERPAPI_KEY
