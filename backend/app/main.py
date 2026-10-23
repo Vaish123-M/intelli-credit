@@ -41,6 +41,7 @@ from app.services.cam import generate_final_report_pdf
 from app.services.audit_store import initialize_audit_store, list_audit_events, record_audit_event
 from app.services.ml import build_credit_recommendation, generate_swot_analysis
 from app.services.research import run_secondary_research
+from app.persistence import StateRepository
 try:
     import anthropic
     ANTHROPIC_AVAILABLE = True
@@ -58,6 +59,7 @@ DOWNLOADS_DIR = APP_ROOT / "downloads"
 UPLOADS_DIR = APP_ROOT / "uploads"
 DATA_DIR = APP_ROOT / "data"
 STATE_FILE = DATA_DIR / "app_state.json"
+STATE_REPOSITORY = StateRepository(DATA_DIR, STATE_FILE)
 DOWNLOADS_DIR.mkdir(parents=True, exist_ok=True)
 UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
 DATA_DIR.mkdir(parents=True, exist_ok=True)
@@ -212,19 +214,10 @@ def _default_state() -> dict[str, Any]:
 
 
 def _load_state() -> dict[str, Any]:
-    if not STATE_FILE.exists():
-        return _default_state()
-
-    try:
-        payload = json.loads(STATE_FILE.read_text(encoding="utf-8"))
-    except Exception:  # noqa: BLE001
-        logger.exception("State file could not be parsed. Re-initializing default state.")
-        return _default_state()
-
-    if not isinstance(payload, dict):
-        return _default_state()
-
     state_obj = _default_state()
+    payload = STATE_REPOSITORY.load(state_obj)
+    if not isinstance(payload, dict):
+        return state_obj
     state_obj.update(payload)
     if not isinstance(state_obj.get("entities"), dict):
         state_obj["entities"] = {}
@@ -235,9 +228,9 @@ def _load_state() -> dict[str, Any]:
 
 def _persist_state() -> None:
     try:
-        STATE_FILE.write_text(json.dumps(state, ensure_ascii=True, indent=2), encoding="utf-8")
+        STATE_REPOSITORY.save(state)
     except Exception:  # noqa: BLE001
-        logger.exception("Failed to persist application state to disk")
+        logger.exception("Failed to persist application state to database")
 
 
 def _validate_upload_payload(file_name: str, content: bytes) -> None:

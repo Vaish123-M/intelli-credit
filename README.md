@@ -84,6 +84,12 @@ Intelli-Credit is a production-grade full-stack application that automates corpo
 - **Grafana** - Metrics visualization
 - **GitHub Actions** - CI/CD pipeline
 
+### Persistence
+- Application state is persisted through SQLAlchemy in the `application_state` table.
+- Local development defaults to SQLite at `backend/data/app_state.db`.
+- Docker and production deployments can set `DATABASE_URL` to PostgreSQL.
+- Existing `backend/data/app_state.json` files are imported automatically on first startup.
+
 ---
 
 ## 📁 Repository Structure
