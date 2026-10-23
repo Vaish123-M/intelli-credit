@@ -327,6 +327,17 @@ Key environment variables (see `.env.example`):
 - [ ] Set up monitoring alerts
 - [ ] Run the frontend container as the non-root `nginx` user and verify its health check
 
+### Frontend performance budget
+
+Frontend CI runs `npm run build:check` and fails if any generated JavaScript chunk exceeds 600 KB. The current chart dependency is isolated into a lazy-loaded chunk so future dashboard features cannot silently grow the production bundle without review.
+
+To run the same check locally:
+
+```bash
+cd frontend
+npm run build:check
+```
+
 ### Deploy to Render
 The project includes `render.yaml` for easy deployment to Render cloud platform.
 
