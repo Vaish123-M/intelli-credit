@@ -3,7 +3,7 @@ from typing import Optional
 from jose import JWTError, jwt
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
-from app.auth.models import TokenData, UserRole
+from app.auth.models import TokenData
 
 SECRET_KEY = "your-secret-key-change-in-production"
 ALGORITHM = "HS256"
@@ -36,11 +36,11 @@ def verify_token(token: str) -> TokenData:
                 detail="Could not validate credentials",
             )
         return TokenData(username=username, role=role)
-    except JWTError:
+    except JWTError as error:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Could not validate credentials",
-        )
+        ) from error
 
 
 async def get_current_user(token: str = Depends(oauth2_scheme)) -> TokenData:

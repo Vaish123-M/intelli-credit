@@ -7,17 +7,16 @@ import os
 import re
 import time
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
-from datetime import datetime, timedelta
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
 import pandas as pd
 import pdfplumber
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile, Depends, Request
+from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
-from pydantic import BaseModel, Field
 from pypdf import PdfReader
 from slowapi import _rate_limit_exceeded_handler
 from app.api.routes.auth import limiter, router as auth_router
@@ -42,12 +41,6 @@ from app.services.cam import generate_final_report_pdf
 from app.services.audit_store import initialize_audit_store, list_audit_events, record_audit_event
 from app.services.ml import build_credit_recommendation, generate_swot_analysis
 from app.services.research import run_secondary_research
-from app.auth import (
-    get_current_active_user,
-    require_role,
-    UserRole,
-)
-
 try:
     import anthropic
     ANTHROPIC_AVAILABLE = True
@@ -296,22 +289,6 @@ app.include_router(reports_router)
 app.include_router(operations_router)
 
 
-class CamRequest(BaseModel):
-    company_name: str
-    entity_id: str | None = None
-    financial_analysis: dict[str, Any] = Field(default_factory=dict)
-    external_intelligence: dict[str, Any] = Field(default_factory=dict)
-    risk_decision: dict[str, Any] = Field(default_factory=dict)
-
-
-class FinalReportRequest(BaseModel):
-    company_name: str
-    entity_id: str | None = None
-    financial_analysis: dict[str, Any] = Field(default_factory=dict)
-    external_intelligence: dict[str, Any] = Field(default_factory=dict)
-    risk_decision: dict[str, Any] = Field(default_factory=dict)
-
-
 def _resolve_entity_id(entity_id: str | None = None) -> str | None:
     requested = (entity_id or "").strip()
     if requested:
@@ -392,7 +369,7 @@ def _extract_value_by_alias(text: str, aliases: list[str]) -> tuple[str, float] 
 def _extract_detected_schema_fields(text: str, metrics: dict[str, float]) -> list[dict[str, Any]]:
     detected_fields: list[dict[str, Any]] = []
 
-    for schema_label, aliases in SCHEMA_ALIAS_MAP.items():
+    for _schema_label, aliases in SCHEMA_ALIAS_MAP.items():
         detected = _extract_value_by_alias(text, aliases)
         if detected:
             detected_fields.append(
@@ -694,14 +671,19 @@ def _parse_financial_dataframe(df: pd.DataFrame, page_idx: int, table_idx: int, 
 
         quality["table_rows_with_metric_matches"] += 1
 
-        def _set_metric(metric_key: str, metric_value: int) -> None:
+        def _set_metric(
+            metric_key: str,
+            metric_value: int,
+            row_number: int = int(row_idx) + 1,
+            metric_label: str = label,
+        ) -> None:
             parsed[metric_key] = metric_value
             provenance[metric_key] = {
                 "file": file_name,
                 "page": page_idx,
                 "table": table_idx,
-                "row": int(row_idx) + 1,
-                "label": label,
+                "row": row_number,
+                "label": metric_label,
                 "source": "table",
             }
 
@@ -1770,7 +1752,6 @@ Note: LLM integration is not configured. Please set ANTHROPIC_API_KEY or OPENAI_
 
 
 def portfolio_summary() -> dict[str, Any]:
-    entities = state.get("entities", {})
     deals = list(state.get("deals", []))
     
     companies_analyzed = len(deals)
@@ -1825,7 +1806,7 @@ def portfolio_alerts() -> list[str]:
             alerts.append(f"{company_name}: Manual review required - {risk_category}")
     
     # Generate alerts from entities for missing documents
-    for entity_id, entity_data in entities.items():
+    for _entity_id, entity_data in entities.items():
         company_name = entity_data.get("company_name", "Unknown Company")
         uploaded_files = entity_data.get("uploaded_files", [])
         classifications = entity_data.get("classifications", [])

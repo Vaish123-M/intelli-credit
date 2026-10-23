@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import io
-import json
 from fastapi.testclient import TestClient
 
 from app.main import app, _default_state, _persist_state, state
