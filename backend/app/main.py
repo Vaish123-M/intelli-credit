@@ -21,6 +21,7 @@ from pydantic import BaseModel, Field
 from pypdf import PdfReader
 from slowapi import _rate_limit_exceeded_handler
 from app.api.routes.auth import limiter, router as auth_router
+from app.api.routes.entities import router as entities_router
 
 from app.services.cam import generate_final_report_pdf
 from app.services.audit_store import initialize_audit_store, list_audit_events, record_audit_event
@@ -273,18 +274,7 @@ state: dict[str, Any] = _load_state()
 app.state.app_state = state
 app.state.persist_state = _persist_state
 app.include_router(auth_router)
-
-
-class EntityOnboardRequest(BaseModel):
-    company_name: str
-    cin: str
-    pan: str
-    sector: str
-    annual_turnover: float
-    loan_type: str
-    loan_amount: float
-    loan_tenure: str
-    interest_rate: float
+app.include_router(entities_router)
 
 
 class ResearchRequest(BaseModel):
@@ -318,12 +308,6 @@ class FinalReportRequest(BaseModel):
 class CopilotRequest(BaseModel):
     company_data: dict[str, Any] = Field(default_factory=dict)
     question: str = ""
-
-
-class SchemaMappingRequest(BaseModel):
-    entity_id: str
-    mappings: list[dict[str, Any]] = Field(default_factory=list)
-    schema_definition: list[dict[str, str]] = Field(default_factory=list)
 
 
 def _resolve_entity_id(entity_id: str | None = None) -> str | None:
@@ -481,6 +465,15 @@ def _build_schema_mapping_payload(
         "mappings": mappings,
         "structured_output": structured_output,
     }
+
+
+app.state.entity_helpers = {
+    "default_schema_fields": DEFAULT_SCHEMA_FIELDS,
+    "resolve_entity_id": _resolve_entity_id,
+    "get_entity_bucket": _get_entity_bucket,
+    "get_entity_schema_definition": _get_entity_schema_definition,
+    "build_schema_mapping": _build_schema_mapping_payload,
+}
 
 
 def _count_keyword_hits(text: str, keywords: list[str]) -> int:
@@ -1103,93 +1096,6 @@ def root() -> dict[str, str]:
 @app.get("/health")
 def health_check() -> dict[str, str]:
     return {"status": "healthy", "service": "intelli-credit-api", "mode": "demo"}
-
-
-@app.post("/entity-onboard")
-def entity_onboard(payload: EntityOnboardRequest) -> dict[str, Any]:
-    entity_id = f"ent_{uuid4().hex[:12]}"
-    entity_record = {
-        "entity_id": entity_id,
-        "created_at": datetime.utcnow().isoformat() + "Z",
-        "company_name": payload.company_name,
-        "cin": payload.cin,
-        "pan": payload.pan,
-        "sector": payload.sector,
-        "annual_turnover": payload.annual_turnover,
-        "loan_type": payload.loan_type,
-        "loan_amount": payload.loan_amount,
-        "loan_tenure": payload.loan_tenure,
-        "interest_rate": payload.interest_rate,
-        "uploaded_files": [],
-        "extracted_data": [],
-        "analysis": None,
-        "research": None,
-        "research_history": [],
-        "classifications": [],
-        "schema_mapping": _build_schema_mapping_payload(detected_fields=[], schema_definition=DEFAULT_SCHEMA_FIELDS),
-    }
-
-    entities = state.setdefault("entities", {})
-    entities[entity_id] = entity_record
-    state["current_entity_id"] = entity_id
-    _persist_state()
-    record_audit_event(
-        "entity_onboarded",
-        {
-            "company_name": payload.company_name,
-            "sector": payload.sector,
-            "loan_type": payload.loan_type,
-            "loan_amount": payload.loan_amount,
-        },
-        entity_id=entity_id,
-        company_name=payload.company_name,
-    )
-
-    return {
-        "entity_id": entity_id,
-        "entity": entity_record,
-        "message": "Entity onboarded successfully.",
-    }
-
-
-@app.get("/schema-definition")
-def schema_definition(entity_id: str | None = None) -> dict[str, Any]:
-    resolved_entity_id = _resolve_entity_id(entity_id)
-    if not resolved_entity_id:
-        return {"schema_definition": DEFAULT_SCHEMA_FIELDS}
-
-    entity_bucket = _get_entity_bucket(resolved_entity_id)
-    return {
-        "entity_id": resolved_entity_id,
-        "schema_definition": _get_entity_schema_definition(entity_bucket),
-    }
-
-
-@app.post("/schema-mapping/update")
-def update_schema_mapping(payload: SchemaMappingRequest) -> dict[str, Any]:
-    resolved_entity_id = _resolve_entity_id(payload.entity_id)
-    if not resolved_entity_id:
-        raise HTTPException(status_code=400, detail="entity_id is required")
-
-    entity_bucket = _get_entity_bucket(resolved_entity_id)
-    extracted_data = list(entity_bucket.get("extracted_data", []))
-    detected_fields: list[dict[str, Any]] = []
-    for item in extracted_data:
-        detected_fields.extend(item.get("schema_detected_fields", []))
-
-    manual_map = {
-        str(item.get("detected_field", "")): str(item.get("system_field", ""))
-        for item in payload.mappings
-        if item.get("detected_field") and item.get("system_field")
-    }
-    existing_schema_definition = _get_entity_schema_definition(entity_bucket)
-    next_schema_definition = payload.schema_definition if payload.schema_definition else existing_schema_definition
-    schema_payload = _build_schema_mapping_payload(detected_fields, manual_map, next_schema_definition)
-
-    entity_bucket["schema_mapping"] = schema_payload
-    state["current_entity_id"] = resolved_entity_id
-    _persist_state()
-    return {"entity_id": resolved_entity_id, **schema_payload}
 
 
 @app.post("/classify-documents")
