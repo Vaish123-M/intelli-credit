@@ -28,6 +28,11 @@ from app.api.routes.research_risk import (
     RiskScoreRequest,
     router as research_risk_router,
 )
+from app.api.routes.reports import (
+    CamRequest,
+    FinalReportRequest,
+    router as reports_router,
+)
 
 from app.services.cam import generate_final_report_pdf
 from app.services.audit_store import initialize_audit_store, list_audit_events, record_audit_event
@@ -283,6 +288,7 @@ app.include_router(auth_router)
 app.include_router(entities_router)
 app.include_router(documents_router)
 app.include_router(research_risk_router)
+app.include_router(reports_router)
 
 
 class CamRequest(BaseModel):
@@ -1478,7 +1484,6 @@ app.state.research_handlers = {
 }
 
 
-@app.post("/generate-cam")
 def generate_cam(payload: CamRequest) -> dict[str, str]:
     timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
     safe_name = re.sub(r"[^a-zA-Z0-9_]+", "_", payload.company_name.lower()).strip("_") or "company"
@@ -1510,7 +1515,6 @@ def generate_cam(payload: CamRequest) -> dict[str, str]:
     return {"cam_report_url": f"/downloads/{report_name}"}
 
 
-@app.post("/generate-final-report")
 def generate_final_report(payload: FinalReportRequest) -> dict[str, str]:
     timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
     safe_name = re.sub(r"[^a-zA-Z0-9_]+", "_", payload.company_name.lower()).strip("_") or "company"
@@ -1590,7 +1594,6 @@ def audit_events(entity_id: str | None = None, limit: int = 100) -> dict[str, An
     }
 
 
-@app.get("/downloads/{filename}")
 def get_download(filename: str) -> FileResponse:
     file_path = _resolve_download_path(filename)
     if not file_path.exists():
@@ -1602,6 +1605,13 @@ def get_download(filename: str) -> FileResponse:
         filename=file_path.name,
         media_type=content_type or "application/octet-stream",
     )
+
+
+app.state.report_handlers = {
+    "generate_cam": generate_cam,
+    "generate_final_report": generate_final_report,
+    "get_download": get_download,
+}
 
 
 @app.get("/dashboard/summary")
