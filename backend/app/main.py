@@ -41,6 +41,14 @@ from app.services.cam import generate_final_report_pdf
 from app.services.audit_store import initialize_audit_store, list_audit_events, record_audit_event
 from app.services.ml import build_credit_recommendation, generate_swot_analysis
 from app.services.research import run_secondary_research
+from app.services.portfolio_service import (
+    dashboard_deals as build_dashboard_deals,
+    dashboard_summary as build_dashboard_summary,
+    portfolio_alerts as build_portfolio_alerts,
+    portfolio_companies as build_portfolio_companies,
+    portfolio_high_risk as build_portfolio_high_risk,
+    portfolio_summary as build_portfolio_summary,
+)
 from app.persistence import StateRepository
 try:
     import anthropic
@@ -1589,25 +1597,11 @@ app.state.report_handlers = {
 
 
 def dashboard_summary() -> dict[str, Any]:
-    deals = list(state.get("deals", []))
-    companies_analyzed = len(deals)
-    low_risk = sum(1 for deal in deals if deal.get("risk_category") == "Low Risk")
-    medium_risk = sum(1 for deal in deals if deal.get("risk_category") == "Medium Risk")
-    high_risk = sum(1 for deal in deals if deal.get("risk_category") == "High Risk")
-    avg_risk_score = round(sum(float(deal.get("risk_score") or 0) for deal in deals) / companies_analyzed, 4) if companies_analyzed else 0
-
-    return {
-        "companies_analyzed": companies_analyzed,
-        "low_risk": low_risk,
-        "medium_risk": medium_risk,
-        "high_risk": high_risk,
-        "avg_risk_score": avg_risk_score,
-    }
+    return build_dashboard_summary(state)
 
 
 def dashboard_deals() -> list[dict[str, Any]]:
-    deals = list(state.get("deals", []))
-    return sorted(deals, key=lambda deal: str(deal.get("timestamp", "")), reverse=True)
+    return build_dashboard_deals(state)
 
 
 def copilot_ask(payload: CopilotRequest) -> dict[str, str]:
@@ -1745,177 +1739,19 @@ Note: LLM integration is not configured. Please set ANTHROPIC_API_KEY or OPENAI_
 
 
 def portfolio_summary() -> dict[str, Any]:
-    deals = list(state.get("deals", []))
-    
-    companies_analyzed = len(deals)
-    
-    # Calculate total exposure from deals
-    total_exposure = 0
-    for deal in deals:
-        loan_limit_str = str(deal.get("loan_limit", "0"))
-        # Parse loan limit string like "INR 1,50,00,000" to number
-        loan_limit_num = float(re.sub(r"[^\d.]", "", loan_limit_str)) if loan_limit_str else 0
-        total_exposure += loan_limit_num
-    
-    # Count risk categories
-    low_risk = sum(1 for deal in deals if deal.get("risk_category") == "Low Risk")
-    medium_risk = sum(1 for deal in deals if deal.get("risk_category") == "Medium Risk")
-    high_risk = sum(1 for deal in deals if deal.get("risk_category") == "High Risk")
-    
-    return {
-        "companies_analyzed": companies_analyzed,
-        "total_exposure": total_exposure,
-        "low_risk": low_risk,
-        "medium_risk": medium_risk,
-        "high_risk": high_risk,
-    }
+    return build_portfolio_summary(state)
 
 
 def portfolio_alerts() -> list[str]:
-    alerts = []
-    entities = state.get("entities", {})
-    deals = list(state.get("deals", []))
-    
-    # High risk threshold (configurable via env var, default 0.6)
-    high_risk_threshold = float(os.getenv("HIGH_RISK_THRESHOLD", "0.6"))
-    
-    # Generate alerts from deals
-    for deal in deals:
-        company_name = deal.get("company_name", "Unknown Company")
-        risk_score = deal.get("risk_score", 0)
-        risk_category = deal.get("risk_category", "")
-        loan_decision = deal.get("loan_decision", "")
-        
-        # High risk alert
-        if risk_score >= high_risk_threshold:
-            alerts.append(f"{company_name}: High risk score ({risk_score:.2f}) - {risk_category}")
-        
-        # Rejection alert
-        if loan_decision == "Reject":
-            alerts.append(f"{company_name}: Loan application rejected - {risk_category}")
-        
-        # Review required alert
-        if loan_decision == "Review":
-            alerts.append(f"{company_name}: Manual review required - {risk_category}")
-    
-    # Generate alerts from entities for missing documents
-    for _entity_id, entity_data in entities.items():
-        company_name = entity_data.get("company_name", "Unknown Company")
-        uploaded_files = entity_data.get("uploaded_files", [])
-        classifications = entity_data.get("classifications", [])
-        
-        # Check if all 5 required document types are present
-        approved_types = set()
-        for classification in classifications:
-            if classification.get("approved"):
-                doc_type = classification.get("detected_type") or classification.get("predicted_type")
-                if doc_type:
-                    approved_types.add(doc_type)
-        
-        missing_types = REQUIRED_DOC_TYPES - approved_types
-        if missing_types and uploaded_files:
-            alerts.append(f"{company_name}: Missing required document types: {', '.join(sorted(missing_types))}")
-    
-    # If no alerts, return empty list
-    return alerts
+    return build_portfolio_alerts(state, REQUIRED_DOC_TYPES)
 
 
 def portfolio_companies() -> list[dict[str, Any]]:
-    companies = []
-    entities = state.get("entities", {})
-    deals = list(state.get("deals", []))
-    
-    # Create a mapping of company name to deal data for risk scores
-    deal_map = {}
-    for deal in deals:
-        company_name = deal.get("company_name", "")
-        if company_name:
-            deal_map[company_name.lower()] = deal
-    
-    # Aggregate company data from entities
-    for entity_id, entity_data in entities.items():
-        company_name = entity_data.get("company_name", "")
-        if not company_name:
-            continue
-        
-        # Get risk score from deals if available
-        deal_data = deal_map.get(company_name.lower())
-        risk_score = deal_data.get("risk_score") if deal_data else None
-        risk_category = deal_data.get("risk_category") if deal_data else None
-        loan_limit = deal_data.get("loan_limit") if deal_data else None
-        interest_rate = deal_data.get("interest_rate") if deal_data else None
-        loan_decision = deal_data.get("loan_decision") if deal_data else None
-        
-        # Parse loan limit to numeric for exposure calculation
-        loan_limit_str = str(loan_limit or "0")
-        exposure = float(re.sub(r"[^\d.]", "", loan_limit_str)) if loan_limit_str else 0
-        
-        companies.append({
-            "company_name": company_name,
-            "entity_id": entity_id,
-            "sector": entity_data.get("sector", "N/A"),
-            "annual_turnover": entity_data.get("annual_turnover"),
-            "loan_type": entity_data.get("loan_type"),
-            "loan_amount": entity_data.get("loan_amount"),
-            "exposure": exposure,
-            "risk_score": risk_score,
-            "risk_category": risk_category,
-            "loan_limit": loan_limit,
-            "interest_rate": interest_rate,
-            "loan_decision": loan_decision,
-            "created_at": entity_data.get("created_at"),
-        })
-    
-    # Sort by company name
-    companies.sort(key=lambda x: x["company_name"])
-    return companies
+    return build_portfolio_companies(state)
 
 
 def portfolio_high_risk() -> list[dict[str, Any]]:
-    high_risk_companies = []
-    entities = state.get("entities", {})
-    deals = list(state.get("deals", []))
-    
-    # High risk threshold (configurable via env var, default 0.6)
-    high_risk_threshold = float(os.getenv("HIGH_RISK_THRESHOLD", "0.6"))
-    
-    # Create a mapping of company name to deal data
-    deal_map = {}
-    for deal in deals:
-        company_name = deal.get("company_name", "")
-        if company_name:
-            deal_map[company_name.lower()] = deal
-    
-    # Filter companies with risk score above threshold
-    for entity_id, entity_data in entities.items():
-        company_name = entity_data.get("company_name", "")
-        if not company_name:
-            continue
-        
-        # Get risk score from deals
-        deal_data = deal_map.get(company_name.lower())
-        if not deal_data:
-            continue
-        
-        risk_score = deal_data.get("risk_score", 0)
-        
-        # Only include if risk score is above threshold
-        if risk_score >= high_risk_threshold:
-            high_risk_companies.append({
-                "company_name": company_name,
-                "entity_id": entity_id,
-                "risk_score": risk_score,
-                "risk_category": deal_data.get("risk_category"),
-                "loan_limit": deal_data.get("loan_limit"),
-                "interest_rate": deal_data.get("interest_rate"),
-                "loan_decision": deal_data.get("loan_decision"),
-                "timestamp": deal_data.get("timestamp"),
-                "sector": entity_data.get("sector", "N/A"),
-            })
-    
-    # Sort by risk score (highest first)
-    high_risk_companies.sort(key=lambda x: x["risk_score"], reverse=True)
-    return high_risk_companies
+    return build_portfolio_high_risk(state)
 
 
 app.state.operation_handlers = {
