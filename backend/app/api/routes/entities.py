@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 from uuid import uuid4
 
@@ -46,7 +46,7 @@ def entity_onboard(payload: EntityOnboardRequest, request: Request) -> dict[str,
     entity_id = f"ent_{uuid4().hex[:12]}"
     entity_record = {
         "entity_id": entity_id,
-        "created_at": datetime.utcnow().isoformat() + "Z",
+        "created_at": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
         "company_name": payload.company_name,
         "cin": payload.cin,
         "pan": payload.pan,

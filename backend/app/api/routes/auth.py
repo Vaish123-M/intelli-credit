@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from typing import Any
 from uuid import uuid4
 
@@ -48,7 +48,7 @@ async def register(user_data: UserCreate, request: Request) -> UserInDB:
         full_name=user_data.full_name,
         role=user_data.role,
         is_active=True,
-        created_at=datetime.utcnow(),
+        created_at=datetime.now(UTC),
         hashed_password=get_password_hash(user_data.password),
     )
     users[user.id] = json.loads(user.model_dump_json())

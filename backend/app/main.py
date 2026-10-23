@@ -7,7 +7,7 @@ import os
 import re
 import time
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
@@ -1095,7 +1095,7 @@ async def classify_documents(entity_id: str = Form(...), files: list[UploadFile]
     results: list[dict[str, Any]] = []
 
     for upload_file in files:
-        safe_name = upload_file.filename or f"upload_{datetime.utcnow().timestamp():.0f}.bin"
+        safe_name = upload_file.filename or f"upload_{datetime.now(UTC).timestamp():.0f}.bin"
         content = await upload_file.read()
         _validate_upload_payload(safe_name, content)
         _run_antivirus_placeholder(safe_name, content)
@@ -1181,7 +1181,7 @@ async def upload(entity_id: str = Form(...), files: list[UploadFile] = File(...)
     all_detected_fields: list[dict[str, Any]] = []
 
     for upload_file in files:
-        safe_name = upload_file.filename or f"upload_{datetime.utcnow().timestamp():.0f}.bin"
+        safe_name = upload_file.filename or f"upload_{datetime.now(UTC).timestamp():.0f}.bin"
         target_name = _sanitize_storage_filename(safe_name)
         target = UPLOADS_DIR / target_name
         content = await upload_file.read()
@@ -1267,7 +1267,7 @@ async def upload(entity_id: str = Form(...), files: list[UploadFile] = File(...)
         {
             "run_id": f"run_{uuid4().hex[:10]}",
             "entity_id": resolved_entity_id,
-            "timestamp": datetime.utcnow().isoformat() + "Z",
+            "timestamp": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
             "files": len(files),
             "quality": extraction_quality_summary,
         }
@@ -1361,7 +1361,7 @@ def research(payload: ResearchRequest) -> dict[str, Any]:
         history = list(entity_bucket.get("research_history", []))
         history.append(
             {
-                "timestamp": datetime.utcnow().isoformat() + "Z",
+                "timestamp": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
                 "company_name": payload.company_name,
                 "research_features": intelligence.get("research_features", {}),
                 "negative_news_score": intelligence.get("negative_news_score"),
@@ -1441,7 +1441,7 @@ def risk_score(payload: RiskScoreRequest) -> dict[str, Any]:
         "swot_analysis": swot,
         "top_risk_factors": factors,
         "decision_status": "Approved" if loan_decision == "Approve" else ("Review Required" if loan_decision == "Review" else "Rejected"),
-        "timestamp": datetime.utcnow().isoformat() + "Z",
+        "timestamp": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
     }
     state["decision"] = decision
 
@@ -1468,7 +1468,7 @@ app.state.research_handlers = {
 
 
 def generate_cam(payload: CamRequest) -> dict[str, str]:
-    timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+    timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
     safe_name = re.sub(r"[^a-zA-Z0-9_]+", "_", payload.company_name.lower()).strip("_") or "company"
     report_name = f"cam_report_{safe_name}_{timestamp}.txt"
     report_path = DOWNLOADS_DIR / report_name
@@ -1478,7 +1478,7 @@ def generate_cam(payload: CamRequest) -> dict[str, str]:
             [
                 "INTELLI-CREDIT CAM REPORT",
                 f"Company: {payload.company_name}",
-                f"Generated At (UTC): {datetime.utcnow().isoformat()}Z",
+                f"Generated At (UTC): {datetime.now(UTC).isoformat().replace('+00:00', 'Z')}",
                 "",
                 "Financial Analysis:",
                 str(payload.financial_analysis),
@@ -1499,7 +1499,7 @@ def generate_cam(payload: CamRequest) -> dict[str, str]:
 
 
 def generate_final_report(payload: FinalReportRequest) -> dict[str, str]:
-    timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+    timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
     safe_name = re.sub(r"[^a-zA-Z0-9_]+", "_", payload.company_name.lower()).strip("_") or "company"
     report_name = f"final_credit_assessment_{safe_name}_{timestamp}.pdf"
     report_path = DOWNLOADS_DIR / report_name
