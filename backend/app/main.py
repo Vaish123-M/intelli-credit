@@ -49,7 +49,11 @@ from app.services.portfolio_service import (
     portfolio_high_risk as build_portfolio_high_risk,
     portfolio_summary as build_portfolio_summary,
 )
-from app.services.document_service import classify_documents as classify_documents_workflow
+from app.services.document_service import (
+    analyze_documents as analyze_documents_workflow,
+    classify_documents as classify_documents_workflow,
+    document_results,
+)
 from app.persistence import StateRepository
 try:
     import anthropic
@@ -1264,50 +1268,25 @@ async def upload(entity_id: str = Form(...), files: list[UploadFile] = File(...)
 
 
 def analyze(entity_id: str | None = None) -> dict[str, Any]:
-    resolved_entity_id = _resolve_entity_id(entity_id)
-    if resolved_entity_id:
-        entity_bucket = _get_entity_bucket(resolved_entity_id)
-        extracted_data = entity_bucket.get("extracted_data", [])
-    else:
-        extracted_data = state.get("extracted_data", [])
-
-    analysis = _build_analysis(extracted_data)
-    state["analysis"] = analysis
-    if resolved_entity_id:
-        entity_bucket["analysis"] = analysis
-        state["current_entity_id"] = resolved_entity_id
-        entity_bucket["extraction_quality_summary"] = _summarize_extraction_quality(extracted_data)
-
-    _persist_state()
-
-    return {"entity_id": resolved_entity_id, "analysis": analysis, "extracted_data": extracted_data}
+    return analyze_documents_workflow(
+        entity_id,
+        state=state,
+        resolve_entity_id=_resolve_entity_id,
+        get_entity_bucket=_get_entity_bucket,
+        build_analysis=_build_analysis,
+        summarize_quality=_summarize_extraction_quality,
+        persist_state=_persist_state,
+    )
 
 
 def results(entity_id: str | None = None) -> dict[str, Any]:
-    resolved_entity_id = _resolve_entity_id(entity_id)
-    if resolved_entity_id:
-        entity_bucket = _get_entity_bucket(resolved_entity_id)
-        return {
-            "entity_id": resolved_entity_id,
-            "uploaded_files": entity_bucket.get("uploaded_files", []),
-            "extracted_data": entity_bucket.get("extracted_data", []),
-            "analysis": entity_bucket.get("analysis"),
-            "extraction_quality_summary": entity_bucket.get("extraction_quality_summary"),
-            "research": entity_bucket.get("research"),
-            "research_history": entity_bucket.get("research_history", []),
-            "schema_mapping": entity_bucket.get("schema_mapping"),
-        }
-
-    return {
-        "entity_id": None,
-        "uploaded_files": state.get("uploaded_files", []),
-        "extracted_data": state.get("extracted_data", []),
-        "analysis": state.get("analysis"),
-        "extraction_quality_summary": _summarize_extraction_quality(state.get("extracted_data", [])),
-        "research": state.get("research"),
-        "research_history": [],
-        "schema_mapping": None,
-    }
+    return document_results(
+        entity_id,
+        state=state,
+        resolve_entity_id=_resolve_entity_id,
+        get_entity_bucket=_get_entity_bucket,
+        summarize_quality=_summarize_extraction_quality,
+    )
 
 
 app.state.document_handlers = {

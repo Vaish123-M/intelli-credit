@@ -11,6 +11,68 @@ from fastapi import HTTPException, UploadFile
 logger = logging.getLogger("intelli_credit.documents")
 
 
+def analyze_documents(
+    entity_id: str | None,
+    *,
+    state: dict[str, Any],
+    resolve_entity_id: Callable[[str | None], str | None],
+    get_entity_bucket: Callable[[str], dict[str, Any]],
+    build_analysis: Callable[[list[dict[str, Any]]], dict[str, Any]],
+    summarize_quality: Callable[[list[dict[str, Any]]], dict[str, Any]],
+    persist_state: Callable[[], None],
+) -> dict[str, Any]:
+    resolved_entity_id = resolve_entity_id(entity_id)
+    if resolved_entity_id:
+        entity_bucket = get_entity_bucket(resolved_entity_id)
+        extracted_data = entity_bucket.get("extracted_data", [])
+    else:
+        extracted_data = state.get("extracted_data", [])
+
+    analysis = build_analysis(extracted_data)
+    state["analysis"] = analysis
+    if resolved_entity_id:
+        entity_bucket["analysis"] = analysis
+        state["current_entity_id"] = resolved_entity_id
+        entity_bucket["extraction_quality_summary"] = summarize_quality(extracted_data)
+    persist_state()
+    return {"entity_id": resolved_entity_id, "analysis": analysis, "extracted_data": extracted_data}
+
+
+def document_results(
+    entity_id: str | None,
+    *,
+    state: dict[str, Any],
+    resolve_entity_id: Callable[[str | None], str | None],
+    get_entity_bucket: Callable[[str], dict[str, Any]],
+    summarize_quality: Callable[[list[dict[str, Any]]], dict[str, Any]],
+) -> dict[str, Any]:
+    resolved_entity_id = resolve_entity_id(entity_id)
+    if resolved_entity_id:
+        entity_bucket = get_entity_bucket(resolved_entity_id)
+        return {
+            "entity_id": resolved_entity_id,
+            "uploaded_files": entity_bucket.get("uploaded_files", []),
+            "extracted_data": entity_bucket.get("extracted_data", []),
+            "analysis": entity_bucket.get("analysis"),
+            "extraction_quality_summary": entity_bucket.get("extraction_quality_summary"),
+            "research": entity_bucket.get("research"),
+            "research_history": entity_bucket.get("research_history", []),
+            "schema_mapping": entity_bucket.get("schema_mapping"),
+        }
+
+    extracted_data = state.get("extracted_data", [])
+    return {
+        "entity_id": None,
+        "uploaded_files": state.get("uploaded_files", []),
+        "extracted_data": extracted_data,
+        "analysis": state.get("analysis"),
+        "extraction_quality_summary": summarize_quality(extracted_data),
+        "research": state.get("research"),
+        "research_history": [],
+        "schema_mapping": None,
+    }
+
+
 async def classify_documents(
     entity_id: str,
     files: list[UploadFile],
