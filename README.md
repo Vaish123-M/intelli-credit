@@ -85,10 +85,11 @@ Intelli-Credit is a production-grade full-stack application that automates corpo
 - **GitHub Actions** - CI/CD pipeline
 
 ### Persistence
-- Application state is persisted through SQLAlchemy in the `application_state` table.
+- Users and company entities are persisted in relational SQLAlchemy tables, with JSON detail columns for evolving workflow data.
+- Workflow metadata is stored in the `application_metadata` table so the API can retain compatibility while the schema evolves.
 - Local development defaults to SQLite at `backend/data/app_state.db`.
 - Docker and production deployments can set `DATABASE_URL` to PostgreSQL.
-- Existing `backend/data/app_state.json` files are imported automatically on first startup.
+- Existing `application_state` database snapshots and `backend/data/app_state.json` files are imported automatically on first startup.
 
 ### ML model reproducibility
 - The risk model is a deterministic, class-balanced logistic regression over a synthetic demonstration dataset.
